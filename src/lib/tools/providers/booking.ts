@@ -36,7 +36,14 @@ export interface BookingResult {
   offer: NormalizedOffer;
   steps: string[];
   bookedAt: string;
-  simulated: true;
+  /** False when charged through Rain sandbox scoped card. */
+  simulated: boolean;
+  rain?: {
+    receipt: string;
+    cardLast4: string;
+    merchant: string;
+    amountUsd: number;
+  };
 }
 
 export interface BookingProvider {

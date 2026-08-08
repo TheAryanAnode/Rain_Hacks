@@ -4,6 +4,7 @@ import { ExecutionAgent } from "@/lib/agents/execution";
 import { getBookingProvider, type NormalizedOffer } from "@/lib/tools/providers/booking";
 import { defaultAutonomy } from "@/lib/agents/orchestrator";
 import { getOrCreateProfile } from "@/lib/demo/store";
+import { isRainConfigured, purchaseHistory } from "@/lib/rain";
 
 export async function POST(req: Request) {
   try {
@@ -21,12 +22,25 @@ export async function POST(req: Request) {
 
     if (action === "propose") {
       const decision = await agent.proposeBook(offer as NormalizedOffer);
-      return NextResponse.json({ ok: true, decision, offer });
+      return NextResponse.json({ ok: true, decision, offer, rainConfigured: isRainConfigured() });
     }
 
     if (action === "book") {
       const result = await agent.confirmBook(offer as NormalizedOffer, !!approved);
-      return NextResponse.json({ ok: true, ...result });
+      return NextResponse.json({ ok: true, rainConfigured: isRainConfigured(), ...result });
+    }
+
+    if (action === "history") {
+      if (!isRainConfigured()) {
+        return NextResponse.json({
+          ok: true,
+          rainConfigured: false,
+          purchases: [],
+          message: "Rain not configured — set RAIN_API_KEY, RAIN_USER_ID, RAIN_CONTRACT_ID",
+        });
+      }
+      const purchases = await purchaseHistory(Number(body.limit ?? 20));
+      return NextResponse.json({ ok: true, rainConfigured: true, purchases });
     }
 
     if (action === "cancel") {

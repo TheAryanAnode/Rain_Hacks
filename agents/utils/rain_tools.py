@@ -23,9 +23,9 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parents[1] / ".env")  # agents/.env, whatever the cwd is
 
 BASE_URL = os.getenv("RAIN_BASE_URL", "https://api-dev.raincards.xyz/v1").rstrip("/")
-API_KEY = os.getenv("RAIN_API_KEY", "")
-USER_ID = os.getenv("RAIN_USER_ID", "")
-CONTRACT_ID = os.getenv("RAIN_CONTRACT_ID", "")
+API_KEY = os.getenv("RAIN_API_KEY", "c7f3672e9b88f1b69ef42f2a7ddf81f4a6a10cf1")
+USER_ID = os.getenv("RAIN_USER_ID", "7eeea853-ca13-4540-bf58-0e2c686a52dd")
+CONTRACT_ID = os.getenv("RAIN_CONTRACT_ID", "ee4df870-e3ec-4151-8144-7985eab60ccf")
 
 # Encrypts the `sessionid` header on scoped-card requests. Sandbox key, published at
 # https://rain-sandbox-trial.mintlify.site/docs/resource-sessionid-keys
