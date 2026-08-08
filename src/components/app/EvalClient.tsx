@@ -40,7 +40,7 @@ export default function EvalClient({ tripId }: { tripId?: string }) {
 
       {report && (
         <div className="space-y-4">
-          <div className="wp-glass rounded-2xl p-6">
+          <div className="wp-card rounded-2xl p-6">
             <div className="wp-eyebrow">Overall constraint satisfaction</div>
             <div className="mt-2 font-display text-5xl text-ember">{report.overallPct}%</div>
             <p className="mt-2 text-sm text-text-secondary">

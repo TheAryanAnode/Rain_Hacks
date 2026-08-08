@@ -3,85 +3,131 @@
 import { motion } from "framer-motion";
 
 /**
- * The central hero mockup: a trip command-center control surface
- * floating in the landscape. Alive with subtle LCD glow + feed motion.
+ * Hero mockup: the organizer's view of a live program. Deliberately mirrors the
+ * real /app/programs/[id] layout — blockers, KPI row, roster, convergence — so
+ * the landing page is showing the product rather than an illustration of it.
  */
 export default function TripCommandPreview() {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 40 }}
+      initial={{ opacity: 0, y: 28 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 1.2, ease: "easeOut" }}
-      whileHover={{ y: -6 }}
+      transition={{ duration: 0.9, ease: "easeOut" }}
       className="wp-glass relative overflow-hidden rounded-3xl"
     >
-      {/* top bar */}
-      <div className="flex items-center justify-between border-b border-white/10 px-6 py-3">
+      {/* Chrome */}
+      <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
         <div className="flex items-center gap-2">
-          <span className="h-3 w-3 rounded-full bg-red-400/70" />
-          <span className="h-3 w-3 rounded-full bg-yellow-400/70" />
-          <span className="h-3 w-3 rounded-full bg-green-400/70" />
+          <span className="h-2.5 w-2.5 rounded-full bg-white/20" />
+          <span className="h-2.5 w-2.5 rounded-full bg-white/20" />
+          <span className="h-2.5 w-2.5 rounded-full bg-white/20" />
         </div>
-        <span className="wp-eyebrow">WAYPORT Command Center</span>
+        <span className="wp-eyebrow">Engineering Offsite — Lisbon</span>
+        <span className="wp-badge wp-badge-accent hidden sm:inline-flex">12 travelers</span>
       </div>
 
-      <div className="grid md:grid-cols-[240px,1fr]">
-        {/* sidebar mock */}
-        <div className="hidden md:block border-r border-white/10 bg-sky-950/40 p-5 space-y-3">
-          {["Command Center", "Trips", "AI Concierge", "Explore", "Inbox", "Wallet", "Travelers", "Money", "Rewards", "Alerts", "Travel DNA", "Autonomy"].map((t, i) => (
-            <div key={t} className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm ${i === 0 ? "bg-white/10 text-white" : "text-text-secondary hover:bg-white/5"}`}>
-              <span className="h-1.5 w-1.5 rounded-full bg-lavender" />
+      <div className="grid md:grid-cols-[196px,1fr]">
+        {/* Sidebar */}
+        <div className="hidden space-y-1 border-r border-white/10 bg-black/25 p-4 md:block">
+          <div className="wp-eyebrow mb-2 px-2 text-[10px]">Company</div>
+          {["Programs", "Travelers", "Advisor"].map((t, i) => (
+            <div
+              key={t}
+              className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm ${
+                i === 0 ? "bg-ember/12 text-white" : "text-text-secondary"
+              }`}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${i === 0 ? "bg-ember" : "bg-white/25"}`} />
+              {t}
+            </div>
+          ))}
+          <div className="wp-eyebrow mb-2 mt-5 px-2 text-[10px]">Trip</div>
+          {["Command Center", "Trips", "AI Concierge", "Alerts"].map((t) => (
+            <div
+              key={t}
+              className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-text-secondary"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-white/25" />
               {t}
             </div>
           ))}
         </div>
 
-        {/* main stage */}
-        <div className="wp-stage relative p-6">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Stat label="Trip" value="NYC — Anniversary" hint="Aug 9 – Aug 13" />
-            <Stat label="Budget" value="$2,184 / $3,000" hint="63% spent" tone="ok" />
-            <Stat label="Flight" value="On time" hint="EWR → LAX · 6:20 PM" tone="ok" />
+        {/* Stage */}
+        <div className="wp-stage relative p-5 md:p-6">
+          {/* Blocker strip */}
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-warn/25 bg-warn/8 px-4 py-3">
+            <span className="wp-dot-mark text-warn" />
+            <span className="text-sm text-text-primary">3 approvals waiting on you</span>
+            <span className="text-xs text-text-tertiary">· $1,240 in policy overage</span>
           </div>
 
-          <div className="mt-6 grid gap-4 md:grid-cols-[1.4fr,1fr]">
-            {/* today */}
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
-              <div className="wp-eyebrow mb-3">Today</div>
+          {/* KPI row */}
+          <div className="mt-4 grid gap-3 sm:grid-cols-4">
+            <Stat label="Confirmed" value="9/12" hint="75% responded" />
+            <Stat label="Projected" value="$28,410" hint="of $32,000" />
+            <Stat label="Remaining" value="$3,590" hint="$2,367 / traveler" tone="ok" />
+            <Stat label="Transfers" value="3" hint="2 vans · saves $410" />
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-[1.35fr,1fr]">
+            {/* Roster */}
+            <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+              <div className="wp-eyebrow mb-3">Roster</div>
               {[
-                ["09:00", "Coffee at Café Lyria"],
-                ["10:30", "Meiji Shrine — 8 min walk"],
-                ["12:30", "Lunch — Tiny local soba"],
-                ["14:00", "Shibuya — matcha crawl"],
-                ["18:30", "Dinner — Omakase (no seafood)"],
-                ["20:30", "Rooftop jazz — 0.4 mi away"],
-              ].map(([t, s]) => (
-                <div key={t} className="flex items-baseline gap-4 border-b border-white/5 last:border-0 py-2.5">
-                  <span className="w-12 text-xs font-mono text-text-tertiary">{t}</span>
-                  <span className="text-sm">{s}</span>
+                ["Dana Whitfield", "SFO", "Booked", "ok"],
+                ["Priya Raghunathan", "JFK", "Booked", "ok"],
+                ["Nadia Haddad", "ORD", "Needs approval", "warn"],
+                ["Grace Mbeki", "AMS", "Needs approval", "warn"],
+                ["Isabel Moreau", "CDG", "Awaiting RSVP", "neutral"],
+              ].map(([name, origin, status, tone]) => (
+                <div
+                  key={name}
+                  className="flex items-center gap-3 border-b border-white/5 py-2.5 last:border-0"
+                >
+                  <span className="wp-avatar !h-7 !w-7 !text-[10px]">
+                    {name.split(" ").map((w) => w[0]).join("")}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm">{name}</span>
+                  <span className="font-mono text-[11px] text-text-tertiary">{origin}</span>
+                  <span className={`wp-badge wp-badge-${tone} !text-[10px]`}>{status}</span>
                 </div>
               ))}
             </div>
 
-            {/* agent activity */}
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
-              <div className="wp-eyebrow mb-3 flex items-center justify-between">
-                <span>WAYPORT Activity</span>
-                <span><span className="wp-dot"/><span className="wp-dot"/><span className="wp-dot"/></span>
+            {/* Convergence */}
+            <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+              <div className="wp-eyebrow mb-3">Arrival convergence</div>
+              {[
+                ["08:40 – 09:25", "4 travelers", "1 van"],
+                ["11:10 – 12:05", "5 travelers", "1 van"],
+                ["16:30", "2 travelers", "1 van"],
+              ].map(([window, who, vans]) => (
+                <div
+                  key={window}
+                  className="flex items-baseline gap-3 border-b border-white/5 py-2.5 last:border-0"
+                >
+                  <span className="font-mono text-[11px] text-text-tertiary">{window}</span>
+                  <span className="flex-1 text-sm">{who}</span>
+                  <span className="text-xs text-text-tertiary">{vans}</span>
+                </div>
+              ))}
+              <div className="mt-3 flex items-center gap-2 rounded-lg bg-ok/10 px-3 py-2 text-xs text-ok">
+                <span className="wp-dot-mark" />
+                12 arrivals collapsed into 3 transfers
               </div>
-              <LiveLog />
             </div>
           </div>
 
-          {/* small autonomy widget */}
-          <div className="mt-6 flex items-center justify-between rounded-2xl border border-white/10 bg-gradient-to-r from-sky-900/40 to-horizon-900/30 p-4">
+          {/* Policy footer */}
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-gradient-to-r from-sky-900/40 to-horizon-900/30 p-4">
             <div>
-              <div className="wp-eyebrow">Autonomy</div>
-              <div className="mt-1 text-sm">Execute with approval</div>
+              <div className="wp-eyebrow">Policy tier</div>
+              <div className="mt-1 text-sm">Standard (IC) · ENG-1042</div>
             </div>
-            <div className="flex items-center gap-2 rounded-full bg-white/5 px-4 py-2 text-xs">
-              <span className="h-2 w-2 rounded-full bg-ok animate-pulse" />
-              Hotels &lt; $250 ✓ · Restaurants ✓ · Changes &lt; $100 ✓
+            <div className="flex items-center gap-2 rounded-full bg-white/5 px-4 py-2 text-xs text-text-secondary">
+              <span className="h-2 w-2 rounded-full bg-ok" />
+              Airfare &lt; $550 · Lodging &lt; $260 · 14d advance
             </div>
           </div>
         </div>
@@ -90,54 +136,28 @@ export default function TripCommandPreview() {
   );
 }
 
-function Stat({ label, value, hint, tone }: { label: string; value: string; hint: string; tone?: "ok" | "warn" }) {
+function Stat({
+  label,
+  value,
+  hint,
+  tone,
+}: {
+  label: string;
+  value: string;
+  hint: string;
+  tone?: "ok" | "warn";
+}) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-      <div className="wp-eyebrow">{label}</div>
-      <div className="mt-2 text-xl font-semibold">
-        {value}
-        {tone === "ok" && <span className="ml-2 align-middle text-ok">●</span>}
-      </div>
-      <div className="mt-1 text-xs text-text-tertiary">{hint}</div>
-    </div>
-  );
-}
-
-function LiveLog() {
-  const lines = [
-    ["10:32:01", "Analyzing your trip…"],
-    ["10:32:04", "Searching 43 hotels…"],
-    ["10:32:08", "Found 8 matches"],
-    ["10:32:11", "Checking availability…"],
-    ["10:32:15", "Comparing rewards…"],
-    ["10:32:19", "Checking local events…"],
-    ["10:32:22", "Found a jazz set 0.4 mi away"],
-    ["10:32:28", "Optimizing itinerary…"],
-    ["10:32:31", "Trip optimized ✓"],
-  ];
-  return (
-    <div className="space-y-2 text-[13px] font-mono text-text-secondary">
-      {lines.map(([t, s], i) => (
-        <motion.div
-          key={t + s}
-          initial={{ opacity: 0, x: -6 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: i * 0.18 }}
-          className="flex gap-3"
-        >
-          <span className="w-16 shrink-0 text-text-tertiary">{t}</span>
-          <span>{s}</span>
-        </motion.div>
-      ))}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: [0.4, 1, 0.4] }}
-        transition={{ duration: 1.6, repeat: Infinity }}
-        className="flex gap-3 text-lavender"
+    <div className="rounded-xl border border-white/10 bg-black/25 p-3.5">
+      <div className="wp-stat-label">{label}</div>
+      <div
+        className={`font-display mt-1.5 text-xl font-semibold tabular-nums ${
+          tone === "ok" ? "text-ok" : ""
+        }`}
       >
-        <span className="w-16 shrink-0">10:32:33</span>
-        <span>Standing by…</span>
-      </motion.div>
+        {value}
+      </div>
+      <div className="mt-0.5 text-[11px] text-text-tertiary">{hint}</div>
     </div>
   );
 }

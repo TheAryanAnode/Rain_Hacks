@@ -5,7 +5,7 @@ import { prisma } from "@/server/db/client";
 import { parsePlanningIntent, kindToDb } from "../graph/service";
 import { BaseAgent } from "./base";
 import type { TravelerDNA } from "../graph/types";
-import { demoStore, useMemoryGraph } from "../demo/store";
+import { demoStore, isMemoryGraph } from "../demo/store";
 import { enrichItemMeta } from "./pricing";
 import { day0DinnerRiskDecision, type RiskDecision } from "../decision/risk";
 import { emitTrace } from "./trace";
@@ -115,7 +115,7 @@ export class PlannerAgent extends BaseAgent {
 
     const { resolveItemCoords } = await import("../mapbox/geocoding");
 
-    if (useMemoryGraph()) {
+    if (isMemoryGraph()) {
       const trip = demoStore.getTrip(this.ctx.userId, this.ctx.tripId);
       if (!trip) throw new Error("Trip not found");
       // Fresh plan — replace items

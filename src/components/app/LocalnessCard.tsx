@@ -5,7 +5,7 @@ import type { LocalnessScore } from "@/lib/discovery/localness";
 export default function LocalnessCard({ spot }: { spot: LocalnessScore }) {
   const b = spot.breakdown;
   return (
-    <article className="wp-glass flex flex-col rounded-2xl p-5">
+    <article className="wp-card flex flex-col rounded-2xl p-5">
       <div className="flex items-start justify-between gap-3">
         <h2 className="font-display text-xl leading-snug">{spot.title}</h2>
         <div className="shrink-0 text-right">

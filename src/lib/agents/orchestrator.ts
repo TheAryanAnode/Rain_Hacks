@@ -6,7 +6,7 @@ import { HotelAgent } from "./hotels";
 import { LocalAgent } from "./local";
 import { emitEvent } from "../events/bus";
 import type { TripEventType } from "../db-types";
-import { demoStore, getOrCreateProfile, useMemoryGraph } from "../demo/store";
+import { demoStore, getOrCreateProfile, isMemoryGraph } from "../demo/store";
 import { parsePlanningIntent } from "../graph/service";
 import { scoreTripOptions } from "./pricing";
 import { emitTrace } from "./trace";
@@ -26,7 +26,7 @@ export class Orchestrator extends BaseAgent {
     const task = await this.startTask({ text, kind: "user_message" });
     emitTrace({ tripId: this.ctx.tripId, agent: "ORCHESTRATOR", step: "Parsing intent", status: "running" });
     const planner = new PlannerAgent(this.ctx);
-    const profile = useMemoryGraph() ? getOrCreateProfile(this.ctx.userId) : null;
+    const profile = isMemoryGraph() ? getOrCreateProfile(this.ctx.userId) : null;
     const intent = parsePlanningIntent(text);
     emitTrace({
       tripId: this.ctx.tripId,
@@ -156,7 +156,7 @@ export class Orchestrator extends BaseAgent {
     if (!this.ctx.tripId) throw new Error("Event handling requires tripId");
     await emitEvent(this.ctx.tripId, type, payload);
 
-    if (useMemoryGraph()) {
+    if (isMemoryGraph()) {
       demoStore.addAlert(this.ctx.tripId, {
         title: type.replace(/_/g, " "),
         body: typeof payload.summary === "string" ? payload.summary : `Guardian received ${type}`,

@@ -46,7 +46,7 @@ export default function BookingReview({
   }
 
   return (
-    <div className="wp-glass rounded-2xl p-6 space-y-4">
+    <div className="wp-card rounded-2xl p-6 space-y-4">
       <div className="wp-eyebrow">Review booking</div>
       <h3 className="font-display text-2xl">{offer.title}</h3>
       <p className="text-sm text-text-secondary">{offer.subtitle}</p>

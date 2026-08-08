@@ -19,21 +19,21 @@ export default async function RewardsPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-3">
-        <div className="wp-glass rounded-2xl p-5">
+        <div className="wp-card rounded-2xl p-5">
           <div className="wp-eyebrow">Cash spend</div>
           <div className="mt-2 text-2xl font-semibold">${samplePrice}</div>
         </div>
-        <div className="wp-glass rounded-2xl p-5">
+        <div className="wp-card rounded-2xl p-5">
           <div className="wp-eyebrow">Rove miles est.</div>
           <div className="mt-2 text-2xl font-semibold">{valuation.roveMiles.toLocaleString()}</div>
         </div>
-        <div className="wp-glass rounded-2xl p-5">
+        <div className="wp-card rounded-2xl p-5">
           <div className="wp-eyebrow">Effective cost</div>
           <div className="mt-2 text-2xl font-semibold text-ember">${valuation.effectiveCostUsd.toFixed(0)}</div>
         </div>
       </div>
 
-      <div className="wp-glass rounded-2xl p-6 text-sm text-text-secondary">
+      <div className="wp-card rounded-2xl p-6 text-sm text-text-secondary">
         Valuation blends Rove miles, credit-card points, and loyalty currency estimated from graph actuals on{" "}
         <span className="text-white">{trips[0]?.title ?? "your trip"}</span>.
       </div>

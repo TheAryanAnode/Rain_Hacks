@@ -75,7 +75,7 @@ export default function LiveCompanionClient({ tripId, destination }: { tripId: s
       </div>
 
       {result?.advice && (
-        <div className="wp-glass rounded-2xl p-6 space-y-2">
+        <div className="wp-card rounded-2xl p-6 space-y-2">
           <div className="wp-eyebrow">Context</div>
           {result.advice.map((line: string, i: number) => (
             <p key={i} className="text-sm text-text-secondary">
@@ -93,7 +93,7 @@ export default function LiveCompanionClient({ tripId, destination }: { tripId: s
 
       {result?.suggestion && (
         <div className="space-y-4">
-          <div className="wp-glass rounded-2xl p-5">
+          <div className="wp-card rounded-2xl p-5">
             <div className="wp-eyebrow">Contextual discovery</div>
             <h3 className="mt-2 font-medium">{result.suggestion.title}</h3>
             <p className="mt-1 text-sm text-text-secondary">{result.suggestion.subtitle}</p>

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUserId } from "@/server/auth";
 import { TravelGraph } from "@/lib/graph/service";
-import { demoStore, useMemoryGraph } from "@/lib/demo/store";
+import { demoStore, isMemoryGraph } from "@/lib/demo/store";
 import { parseEditIntent, applyEditToItems } from "@/lib/graph/recompute";
 import { emitTrace } from "@/lib/agents/trace";
 import { day0DinnerRiskDecision } from "@/lib/decision/risk";
@@ -25,7 +25,7 @@ export async function POST(req: Request) {
     status: "ok",
   });
 
-  if (useMemoryGraph()) {
+  if (isMemoryGraph()) {
     const trip = demoStore.getTrip(userId, tripId);
     if (!trip) return NextResponse.json({ error: "Trip not found" }, { status: 404 });
     const budget = trip.budgets?.[0]

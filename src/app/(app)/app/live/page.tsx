@@ -18,7 +18,7 @@ export default async function LivePage() {
         subtitle="Not generic attractions — what you should do right now given graph + world signals."
       />
       {!trip ? (
-        <div className="wp-glass rounded-2xl p-10 text-center">
+        <div className="wp-card rounded-2xl p-10 text-center">
           <p className="text-text-secondary">Plan a trip first, then enter Live mode.</p>
           <Link href="/app/concierge" className="wp-cta mt-4 inline-flex px-5 py-2.5 text-sm">
             Concierge

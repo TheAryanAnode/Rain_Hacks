@@ -22,7 +22,7 @@ export default async function WalletPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-2">
-        <div className="wp-glass rounded-2xl p-6">
+        <div className="wp-card rounded-2xl p-6">
           <div className="wp-eyebrow">Confirmed bookings</div>
           <ul className="mt-4 space-y-3">
             {confirmations.length === 0 ? (
@@ -42,7 +42,7 @@ export default async function WalletPage() {
             )}
           </ul>
         </div>
-        <div className="wp-glass rounded-2xl p-6">
+        <div className="wp-card rounded-2xl p-6">
           <div className="wp-eyebrow">Documents</div>
           <ul className="mt-4 space-y-3">
             {docs.map((d) => (

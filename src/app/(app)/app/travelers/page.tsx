@@ -1,114 +1,208 @@
+import Link from "next/link";
 import { requireUserId } from "@/server/auth";
-import { getOrCreateProfile } from "@/lib/demo/store";
-import { TravelGraph } from "@/lib/graph/service";
+import { demoStore } from "@/lib/demo/store";
 import PageAsciiHero from "@/components/app/PageAsciiHero";
-import { groupCompromiseScore } from "@/lib/decision/engine";
+import {
+  attendeeCost,
+  checkPolicy,
+  initials,
+  tierFor,
+  usd,
+  RSVP_LABEL,
+  PURPOSE_LABEL,
+  type Attendee,
+} from "@/lib/enterprise/program";
+import type { DemoTrip } from "@/lib/demo/store";
+
+type Row = {
+  attendee: Attendee;
+  trip: DemoTrip;
+  flags: ReturnType<typeof checkPolicy>;
+  costUsd: number;
+};
+
+const RSVP_TONE: Record<Attendee["rsvp"], string> = {
+  ACCEPTED: "wp-badge-ok",
+  TENTATIVE: "wp-badge-warn",
+  DECLINED: "wp-badge-err",
+  INVITED: "wp-badge-neutral",
+};
 
 export default async function TravelersPage() {
   const userId = await requireUserId();
-  const profile = getOrCreateProfile(userId);
-  const trips = await new TravelGraph(userId).listTrips();
-  const dna: any = profile.dna;
+  // Touch the store so the demo seed exists before we read coordinated trips.
+  demoStore.listTrips(userId);
+  const trips = demoStore.listCoordinatedTrips();
 
-  const party = [
-    {
-      name: profile.name,
-      role: "Primary",
-      email: profile.email,
-      airport: profile.homeAirport,
-      weights: {
-        food: (dna?.food?.streetFood ?? 5) / 10,
-        walking: (dna?.physical?.walkingTolerance ?? 5) / 10,
-        museums: (dna?.social?.touristAttractions ?? 5) / 10,
-        budget: (dna?.money?.budgetSensitivity ?? 5) / 10,
-        nightlife: (dna?.social?.nightlife ?? 5) / 10,
-      },
-    },
-    {
-      name: "Guest traveler",
-      role: "Companion",
-      email: "guest@wayport.demo",
-      airport: profile.homeAirport,
-      weights: { food: 0.4, walking: 0.3, museums: 0.9, budget: 0.5, nightlife: 0.2 },
-    },
-    {
-      name: "Budget friend",
-      role: "Companion",
-      email: "budget@wayport.demo",
-      airport: profile.homeAirport,
-      weights: { food: 0.5, walking: 0.6, museums: 0.3, budget: 0.95, nightlife: 0.1 },
-    },
-  ];
+  // One row per person per upcoming trip — this directory answers "who is
+  // travelling", not "who is employed".
+  const rows: Row[] = trips.flatMap((trip) =>
+    trip.coordination!.travelers.map((attendee) => ({
+      attendee,
+      trip,
+      flags: checkPolicy(attendee, tierFor(attendee, trip.coordination!.policyTier)),
+      costUsd: attendeeCost(attendee).totalUsd,
+    })),
+  );
 
-  const optionA = { food: 0.85, walking: 0.4, museums: 0.7, budget: 0.55, nightlife: 0.3 };
-  const optionB = { food: 0.5, walking: 0.8, museums: 0.55, budget: 0.9, nightlife: 0.2 };
-  const scoreA = groupCompromiseScore(party, optionA);
-  const scoreB = groupCompromiseScore(party, optionB);
-  const winner = scoreA.score >= scoreB.score ? "A · Food-forward walkable core" : "B · Budget + museums";
+  const departments = [...new Set(rows.map((r) => r.attendee.department))].sort();
+  const travelling = rows.filter((r) => r.attendee.rsvp !== "DECLINED");
+  const flagged = rows.filter((r) => r.flags.length > 0);
+  const needs = rows.filter(
+    (r) => (r.attendee.dietary?.length ?? 0) + (r.attendee.accessibility?.length ?? 0) > 0,
+  );
+  const totalCost = travelling.reduce((s, r) => s + r.costUsd, 0);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageAsciiHero
         variant="travelers"
-        eyebrow="You"
+        eyebrow="Company"
         title="Travelers"
-        subtitle="Group intelligence — maximize combined satisfaction, not endless debate."
+        subtitle="Everyone with travel on the books — readiness, policy standing, and cost to the company."
       />
 
-      <div className="grid gap-4 md:grid-cols-3">
-        {party.map((p) => (
-          <div key={p.email} className="wp-glass rounded-2xl p-6">
-            <div className="wp-eyebrow">{p.role}</div>
-            <h2 className="mt-2 text-xl font-medium">{p.name}</h2>
-            <p className="mt-1 text-sm text-text-secondary">{p.email}</p>
-            <ul className="mt-3 space-y-1 text-xs text-text-tertiary">
-              {Object.entries(p.weights).map(([k, v]) => (
-                <li key={k}>
-                  {k} · {Math.round(v * 100)}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </div>
-
-      <div className="wp-glass rounded-2xl p-6">
-        <div className="wp-eyebrow">Group compromise</div>
-        <p className="mt-2 text-sm text-text-secondary">
-          Winner: <span className="text-ember">{winner}</span> (score{" "}
-          {Math.round(Math.max(scoreA.score, scoreB.score) * 100)} · fairness{" "}
-          {Math.round(Math.max(scoreA.fairness, scoreB.fairness) * 100)})
-        </p>
-        <div className="mt-4 grid gap-3 md:grid-cols-2 text-sm">
-          <div className="rounded-xl border border-white/10 p-4">
-            <div className="font-medium">Option A</div>
-            {scoreA.detail.map((d) => (
-              <div key={d.name} className="text-text-tertiary text-xs">
-                {d.name}: {Math.round(d.satisfaction * 100)}
-              </div>
-            ))}
-          </div>
-          <div className="rounded-xl border border-white/10 p-4">
-            <div className="font-medium">Option B</div>
-            {scoreB.detail.map((d) => (
-              <div key={d.name} className="text-text-tertiary text-xs">
-                {d.name}: {Math.round(d.satisfaction * 100)}
-              </div>
-            ))}
-          </div>
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="wp-stat">
+          <span className="wp-stat-label">Travelling</span>
+          <span className="wp-stat-value">{travelling.length}</span>
+          <span className="text-xs text-text-tertiary">
+            across {trips.length} trip{trips.length === 1 ? "" : "s"}
+          </span>
         </div>
-      </div>
+        <div className="wp-stat">
+          <span className="wp-stat-label">Policy flags</span>
+          <span className={`wp-stat-value ${flagged.length ? "text-warn" : "text-ok"}`}>
+            {flagged.length}
+          </span>
+          <span className="text-xs text-text-tertiary">travelers needing review</span>
+        </div>
+        <div className="wp-stat">
+          <span className="wp-stat-label">Special needs</span>
+          <span className="wp-stat-value">{needs.length}</span>
+          <span className="text-xs text-text-tertiary">dietary or accessibility</span>
+        </div>
+        <div className="wp-stat">
+          <span className="wp-stat-label">Committed spend</span>
+          <span className="wp-stat-value">{usd(totalCost)}</span>
+          <span className="text-xs text-text-tertiary">
+            {departments.length} department{departments.length === 1 ? "" : "s"}
+          </span>
+        </div>
+      </section>
 
-      <div className="wp-glass rounded-2xl p-6">
-        <div className="wp-eyebrow">Shared trips</div>
-        <ul className="mt-3 space-y-2 text-sm text-text-secondary">
-          {trips.map((t: any) => (
-            <li key={t.id}>
-              {t.title} · {t.destination}
-            </li>
-          ))}
-        </ul>
-      </div>
+      <section className="wp-card p-6">
+        <h2 className="wp-section-title">Directory</h2>
+        <p className="mt-1.5 text-sm text-text-tertiary">
+          Grouped by department. Policy standing is evaluated live against each
+          trip&apos;s policy tier.
+        </p>
+
+        <div className="mt-6 space-y-8">
+          {departments.map((dept) => {
+            const deptRows = rows.filter((r) => r.attendee.department === dept);
+            return (
+              <div key={dept}>
+                <div className="flex items-baseline gap-3">
+                  <h3 className="font-display text-sm font-semibold tracking-wide">{dept}</h3>
+                  <span className="text-xs text-text-tertiary">
+                    {deptRows.length} traveler{deptRows.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+
+                <div className="wp-table-wrap mt-3">
+                  <table className="wp-table">
+                    <thead>
+                      <tr>
+                        <th>Traveler</th>
+                        <th>Home</th>
+                        <th>Trip</th>
+                        <th>Standing</th>
+                        <th>RSVP</th>
+                        <th className="wp-num">Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {deptRows.map(({ attendee: a, trip, flags, costUsd }) => (
+                        <tr key={`${trip.id}-${a.id}`}>
+                          <td>
+                            <div className="flex items-center gap-3">
+                              <span className="wp-avatar">{initials(a.name)}</span>
+                              <div className="min-w-0">
+                                <div className="truncate font-medium text-text-primary">
+                                  {a.name}
+                                </div>
+                                <div className="truncate text-xs text-text-tertiary">
+                                  {a.title}
+                                </div>
+                                {(a.dietary?.length || a.accessibility?.length) && (
+                                  <div className="mt-1 flex flex-wrap gap-1">
+                                    {[...(a.dietary ?? []), ...(a.accessibility ?? [])].map(
+                                      (n) => (
+                                        <span key={n} className="wp-badge wp-badge-neutral">
+                                          {n}
+                                        </span>
+                                      ),
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="whitespace-nowrap font-mono text-xs">
+                            {a.originAirport}
+                          </td>
+
+                          <td className="text-xs">
+                            <Link
+                              href={`/app/trips/${trip.id}`}
+                              className="text-text-primary underline-offset-4 hover:text-ember hover:underline"
+                            >
+                              {trip.title}
+                            </Link>
+                            <div className="text-text-tertiary">
+                              {PURPOSE_LABEL[trip.coordination!.purpose]}
+                            </div>
+                          </td>
+
+                          <td>
+                            {flags.length === 0 ? (
+                              <span className="wp-badge wp-badge-ok">In policy</span>
+                            ) : (
+                              <div className="flex flex-wrap gap-1">
+                                {flags.map((f) => (
+                                  <span
+                                    key={f.kind}
+                                    title={f.detail}
+                                    className={`wp-badge ${f.severity === "err" ? "wp-badge-err" : "wp-badge-warn"}`}
+                                  >
+                                    {f.label}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+
+                          <td>
+                            <span className={`wp-badge ${RSVP_TONE[a.rsvp]}`}>
+                              {RSVP_LABEL[a.rsvp]}
+                            </span>
+                          </td>
+
+                          <td className="wp-num whitespace-nowrap font-medium text-text-primary">
+                            {costUsd > 0 ? usd(costUsd) : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
     </div>
   );
 }

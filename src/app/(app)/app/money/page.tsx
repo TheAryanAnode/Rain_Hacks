@@ -34,7 +34,7 @@ export default async function MoneyPage() {
 
       <div className="space-y-3">
         {rows.map((r) => (
-          <div key={r.id} className="wp-glass flex flex-wrap items-center justify-between gap-3 rounded-2xl p-5">
+          <div key={r.id} className="wp-card flex flex-wrap items-center justify-between gap-3 rounded-2xl p-5">
             <div>
               <div className="font-medium">{r.title}</div>
               <div className="text-xs text-text-tertiary">{r.destination}</div>
@@ -52,7 +52,7 @@ export default async function MoneyPage() {
 
 function Card({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="wp-glass rounded-2xl p-5">
+    <div className="wp-card rounded-2xl p-5">
       <div className="wp-eyebrow">{label}</div>
       <div className="mt-2 text-2xl font-semibold">{value}</div>
       {hint && <div className="mt-1 text-xs text-text-tertiary">{hint}</div>}

@@ -1,6 +1,6 @@
 import { prisma } from "@/server/db/client";
 import type { TripEventType } from "../db-types";
-import { demoStore, useMemoryGraph } from "../demo/store";
+import { demoStore, isMemoryGraph } from "../demo/store";
 import { randomUUID } from "crypto";
 
 /**
@@ -11,7 +11,7 @@ import { randomUUID } from "crypto";
 const memEvents: { id: string; tripId: string; type: string; payload: Record<string, unknown>; processed: boolean; createdAt: Date }[] = [];
 
 export async function emitEvent(tripId: string, type: TripEventType, payload: Record<string, unknown>) {
-  if (useMemoryGraph()) {
+  if (isMemoryGraph()) {
     const ev = { id: randomUUID(), tripId, type, payload, processed: false, createdAt: new Date() };
     memEvents.push(ev);
     demoStore.logAction({
@@ -30,7 +30,7 @@ export async function emitEvent(tripId: string, type: TripEventType, payload: Re
 }
 
 export async function getPendingEvents(tripId: string, limit = 20) {
-  if (useMemoryGraph()) {
+  if (isMemoryGraph()) {
     return memEvents.filter((e) => e.tripId === tripId && !e.processed).slice(0, limit);
   }
   return prisma.tripEvent.findMany({
@@ -41,7 +41,7 @@ export async function getPendingEvents(tripId: string, limit = 20) {
 }
 
 export async function markProcessed(ids: string[]) {
-  if (useMemoryGraph()) {
+  if (isMemoryGraph()) {
     for (const e of memEvents) if (ids.includes(e.id)) e.processed = true;
     return { count: ids.length };
   }

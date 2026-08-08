@@ -1,7 +1,7 @@
 import { BaseAgent } from "./base";
 import { getBookingProvider } from "../tools/providers/booking";
 import { mutateWorld, getWorldSignals } from "../graph/world";
-import { demoStore, useMemoryGraph } from "../demo/store";
+import { demoStore, isMemoryGraph } from "../demo/store";
 import { TravelGraph } from "../graph/service";
 
 /**
@@ -77,7 +77,7 @@ export class CompanionAgent extends BaseAgent {
 
   async setLiveMode() {
     if (!this.ctx.tripId) return;
-    if (useMemoryGraph()) {
+    if (isMemoryGraph()) {
       demoStore.updateTrip(this.ctx.tripId, { mode: "LIVE", status: "ACTIVE" });
     }
   }

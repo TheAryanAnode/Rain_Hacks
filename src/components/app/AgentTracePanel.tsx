@@ -37,7 +37,7 @@ export default function AgentTracePanel({
   }, [tripId]);
 
   return (
-    <div className={cn("wp-glass rounded-2xl p-4", className)}>
+    <div className={cn("wp-card rounded-2xl p-4", className)}>
       <div className="flex items-center justify-between gap-2">
         <div className="wp-eyebrow">Agent thought stream</div>
         <span className={cn("text-[10px] uppercase tracking-widest", connected ? "text-ok" : "text-text-tertiary")}>

@@ -50,7 +50,7 @@ export default function AdvisorMode() {
   }
 
   return (
-    <div className="wp-glass space-y-4 rounded-2xl p-6">
+    <div className="wp-card space-y-4 rounded-2xl p-6">
       <div className="wp-eyebrow">WAYPORT PRO — Travel Advisor</div>
       <textarea
         value={brief}

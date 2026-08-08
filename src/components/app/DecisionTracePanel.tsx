@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 
 export default function DecisionTracePanel({ decision }: { decision: DecisionTrace }) {
   return (
-    <div className="wp-glass space-y-3 rounded-2xl p-5">
+    <div className="wp-card space-y-3 rounded-2xl p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="wp-eyebrow">
           {decision.agent} · {decision.tool}

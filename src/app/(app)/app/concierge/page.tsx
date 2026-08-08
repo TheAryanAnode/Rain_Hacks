@@ -11,7 +11,7 @@ export default function Concierge() {
         subtitle="Tell WAYPORT what you need. The Orchestrator plans into your Travel Graph."
       />
 
-      <div className="wp-glass min-h-[480px] rounded-3xl p-6">
+      <div className="wp-card min-h-[480px] rounded-3xl p-6">
         <ChatClient />
       </div>
     </div>

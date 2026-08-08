@@ -60,7 +60,7 @@ export default function AutonomyClient({
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <section className="wp-glass space-y-3 rounded-2xl p-6 md:p-8">
+        <section className="wp-card space-y-3 rounded-2xl p-6 md:p-8">
           <h3 className="wp-eyebrow">Mode</h3>
           <div className="grid gap-3 sm:grid-cols-2">
             {MODES.map((m) => (
@@ -89,7 +89,7 @@ export default function AutonomyClient({
           </div>
         </section>
 
-        <section className="wp-glass space-y-6 rounded-2xl p-6 md:p-8">
+        <section className="wp-card space-y-6 rounded-2xl p-6 md:p-8">
           <h3 className="wp-eyebrow">Spend & booking limits</h3>
           <div className="grid gap-6 sm:grid-cols-2">
             <Num

@@ -31,7 +31,7 @@ export default function AccountClient({ profile: initial }: { profile: Profile }
 
   return (
     <div className="mx-auto max-w-2xl space-y-8">
-      <section className="wp-glass space-y-4 rounded-2xl p-6">
+      <section className="wp-card space-y-4 rounded-2xl p-6">
         <div className="wp-eyebrow">Profile</div>
         <Field label="Name" value={profile.name} onChange={(v) => { setProfile((p) => ({ ...p, name: v })); setSaved(false); }} />
         <Field label="Email" value={profile.email} onChange={(v) => { setProfile((p) => ({ ...p, email: v })); setSaved(false); }} />
@@ -49,7 +49,7 @@ export default function AccountClient({ profile: initial }: { profile: Profile }
         </button>
       </section>
 
-      <section className="wp-glass rounded-2xl p-6">
+      <section className="wp-card rounded-2xl p-6">
         <div className="wp-eyebrow">Settings shortcuts</div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <Link href="/app/dna" className="rounded-xl border border-white/10 px-4 py-3 text-sm hover:border-ember/40">

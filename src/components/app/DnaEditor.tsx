@@ -133,7 +133,7 @@ export default function DnaEditor({ initial }: { initial: Record<string, any> })
         </button>
       </div>
 
-      <section className="wp-glass rounded-2xl p-6">
+      <section className="wp-card rounded-2xl p-6">
         <div className="wp-eyebrow">Describe yourself</div>
         <p className="mt-2 text-sm text-text-secondary">
           Paste a vibe in plain English — we only move the sliders we can infer.
@@ -155,7 +155,7 @@ export default function DnaEditor({ initial }: { initial: Record<string, any> })
 
       <div className="grid gap-6 md:grid-cols-2">
         {SECTIONS.map((sec) => (
-          <section key={sec.id} className="wp-glass rounded-2xl p-6">
+          <section key={sec.id} className="wp-card rounded-2xl p-6">
             <h3 className="wp-eyebrow mb-4">{sec.title}</h3>
             <div className="space-y-5">
               {sec.fields.map((f) => {

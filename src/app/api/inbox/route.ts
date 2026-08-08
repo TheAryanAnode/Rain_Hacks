@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireUserId } from "@/server/auth";
-import { demoStore, useMemoryGraph } from "@/lib/demo/store";
+import { demoStore, isMemoryGraph } from "@/lib/demo/store";
 import { TravelGraph } from "@/lib/graph/service";
 
 /** Parse uploaded travel docs into the Travel Graph (demo extraction). */
 export async function GET() {
   const userId = await requireUserId();
-  if (useMemoryGraph()) {
+  if (isMemoryGraph()) {
     return NextResponse.json({ docs: demoStore.listInbox(userId) });
   }
   return NextResponse.json({ docs: [] });
@@ -47,7 +47,7 @@ export async function POST(req: Request) {
       });
     }
 
-    const doc = useMemoryGraph()
+    const doc = isMemoryGraph()
       ? demoStore.addInbox({
           userId,
           name,

@@ -46,7 +46,7 @@ export default function TripEditPanel({ tripId }: { tripId: string }) {
   }
 
   return (
-    <div className="wp-glass space-y-4 rounded-2xl p-5">
+    <div className="wp-card space-y-4 rounded-2xl p-5">
       <div className="wp-eyebrow">Edit trip · natural language</div>
       <p className="text-sm text-text-secondary">
         Tell WAYPORT how the trip should change — it recomputes the Travel Graph.
