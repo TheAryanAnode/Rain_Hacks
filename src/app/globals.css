@@ -547,6 +547,47 @@ body {
 }
 .wp-btn-sm[data-tone="accent"]:hover { background: rgba(232, 144, 90, 0.18); border-color: rgba(232, 144, 90, 0.6); }
 
+/*
+  Indeterminate progress bar.
+
+  For work whose duration we genuinely cannot predict (a server action plus a
+  navigation). A sweeping bar is honest about that; a percentage would be
+  invented. Sits flush inside a rounded container via overflow-hidden.
+*/
+.wp-progress-indeterminate {
+  position: relative;
+  height: 3px;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(232, 144, 90, 0.14);
+}
+
+.wp-progress-indeterminate::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inline-size: 40%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--ember), transparent);
+  animation: wp-sweep 1.15s ease-in-out infinite;
+}
+
+@keyframes wp-sweep {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(350%); }
+}
+
+/* Reduced motion: hold a steady bar rather than sweeping. */
+@media (prefers-reduced-motion: reduce) {
+  .wp-progress-indeterminate::after {
+    animation: none;
+    inline-size: 100%;
+    background: var(--ember);
+    opacity: 0.5;
+  }
+}
+
 /* Section header used at the top of each product page. */
 .wp-section-title {
   font-family: var(--font-display), var(--font-sans);

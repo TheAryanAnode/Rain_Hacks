@@ -73,8 +73,11 @@ export default function TravelerPicker({
             size={14}
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary"
           />
+          {/* !pl-9: .wp-input sets padding as unlayered CSS, which outranks
+              Tailwind's layered utilities — without the override the icon
+              sits on top of the placeholder. */}
           <input
-            className="wp-input pl-9"
+            className="wp-input !pl-9"
             placeholder="Search name, city, airport, or role"
             value={query}
             onChange={(e) => setQuery(e.target.value)}

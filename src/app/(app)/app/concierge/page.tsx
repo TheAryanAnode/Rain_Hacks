@@ -1,19 +1,12 @@
-import ChatClient from "@/components/app/ChatClient";
-import PageAsciiHero from "@/components/app/PageAsciiHero";
+import { redirect } from "next/navigation";
 
-export default function Concierge() {
-  return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <PageAsciiHero
-        variant="concierge"
-        eyebrow="Trip maker"
-        title="AI Concierge"
-        subtitle="Tell WAYPORT what you need. The Orchestrator plans into your Travel Graph."
-      />
-
-      <div className="wp-card min-h-[480px] rounded-3xl p-6">
-        <ChatClient />
-      </div>
-    </div>
-  );
+/**
+ * The Concierge and "new trip" are one surface now.
+ *
+ * They were always the same job — collect what a trip needs, then coordinate
+ * it — split across a chat that created trips with no origin or dates, and a
+ * form that collected them but never planned. `/app/trips/new` does both.
+ */
+export default function ConciergeRedirect() {
+  redirect("/app/trips/new");
 }

@@ -29,9 +29,17 @@ type Props = {
   tripTitle: string;
   destination: string;
   initialDay?: number;
+  /** All trips, for the switcher. Omitted or single-entry hides it. */
+  trips?: { id: string; title: string }[];
 };
 
-export default function WayportMapOS({ tripId, tripTitle, destination, initialDay = 0 }: Props) {
+export default function WayportMapOS({
+  tripId,
+  tripTitle,
+  destination,
+  initialDay = 0,
+  trips,
+}: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapObj = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
@@ -56,6 +64,17 @@ export default function WayportMapOS({ tripId, tripTitle, destination, initialDa
   stopsRef.current = stops;
   routeRef.current = route;
 
+  /**
+   * Token mirrored into a ref.
+   *
+   * Async continuations below outlive the render that scheduled them. Reading
+   * `token` from a closure there sees the value as of mount — null — long after
+   * a live map exists, which previously caused the fallback canvas to overwrite
+   * a working Mapbox instance. Always read the ref inside async callbacks.
+   */
+  const tokenRef = useRef<string | null>(null);
+  tokenRef.current = token;
+
   async function load(dayOffset = day, transport = mode) {
     const res = await fetch(`/api/routing?tripId=${tripId}&dayOffset=${dayOffset}&mode=${transport}`);
     const data = await res.json();
@@ -66,6 +85,7 @@ export default function WayportMapOS({ tripId, tripTitle, destination, initialDa
     setDays(data.days?.length ? data.days : [0]);
     // Mapbox GL JS requires a public token (pk.*) — ignore sk.* if somehow returned
     const t = typeof data.mapboxToken === "string" && data.mapboxToken.startsWith("pk.") ? data.mapboxToken : null;
+    tokenRef.current = t;
     setToken(t);
     setAgentLog((l) => [...l.slice(-4), `Routed day ${dayOffset + 1} · ${data.route ? formatDuration(data.route.durationSeconds) : "single stop"}`]);
     return data;
@@ -164,14 +184,31 @@ export default function WayportMapOS({ tripId, tripTitle, destination, initialDa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, token]);
 
+  /**
+   * Last day/mode actually fetched. Guards against duplicate requests: the
+   * [tripId] effect already loads day 0, and React Strict Mode re-runs every
+   * effect on mount, so a naive "skip first run" flag still fired a third
+   * fetch. Comparing the key is idempotent however many times effects run.
+   */
+  const loadedKey = useRef<string | null>(`${initialDay}|walking`);
+
   useEffect(() => {
+    const key = `${day}|${mode}`;
+    if (loadedKey.current === key) return;
+    loadedKey.current = key;
+
     load(day, mode).then((data) => {
       if (!data) return;
       const map = mapObj.current;
-      if (map && map.isStyleLoaded()) {
-        paint(map, data.stops, data.route, selected, hover);
-        fit(map, data.stops);
-      } else if (!token && mapRef.current) {
+      if (map) {
+        // The style may still be loading when a fast response lands.
+        const apply = () => {
+          paint(map, data.stops, data.route, selected, hover, true);
+          fit(map, data.stops);
+        };
+        if (map.isStyleLoaded()) apply();
+        else map.once("load", apply);
+      } else if (!tokenRef.current && mapRef.current) {
         drawFallback(mapRef.current, data.stops, data.route, selected, hover);
       }
     });
@@ -180,8 +217,13 @@ export default function WayportMapOS({ tripId, tripTitle, destination, initialDa
 
   useEffect(() => {
     const map = mapObj.current;
-    if (map && map.isStyleLoaded()) paint(map, stops, route, selected, hover);
-    else if (!token && mapRef.current) drawFallback(mapRef.current, stops, route, selected, hover);
+    if (map) {
+      if (map.isStyleLoaded()) paint(map, stops, route, selected, hover);
+      return;
+    }
+    if (!tokenRef.current && mapRef.current) {
+      drawFallback(mapRef.current, stops, route, selected, hover);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, hover, stops, route]);
 
@@ -295,29 +337,104 @@ export default function WayportMapOS({ tripId, tripTitle, destination, initialDa
       }
     }
 
+    // Stops at the same place (a hotel used twice, a venue across two days)
+    // would otherwise stack into one clickable pin with the rest hidden
+    // underneath. Group them and label the group with how many it covers.
+    const groups = new Map<string, { stops: TripStop[]; indices: number[] }>();
     dayStops.forEach((s, i) => {
+      const key = `${s.lng.toFixed(5)},${s.lat.toFixed(5)}`;
+      const g = groups.get(key);
+      if (g) {
+        g.stops.push(s);
+        g.indices.push(i);
+      } else {
+        groups.set(key, { stops: [s], indices: [i] });
+      }
+    });
+
+    for (const { stops: group, indices } of groups.values()) {
+      const primary = group[0];
       const el = document.createElement("button");
       el.className = "wp-map-marker";
-      el.innerHTML = `<span>${i + 1}</span>`;
-      if (sel === s.id || hov === s.id) el.classList.add("is-active");
+      el.type = "button";
+
+      const label =
+        group.length > 1
+          ? `${indices[0] + 1}+${group.length - 1}`
+          : String(indices[0] + 1);
+      el.innerHTML = `<span>${label}</span>`;
+      el.setAttribute(
+        "aria-label",
+        group.length > 1
+          ? `${group.length} stops here: ${group.map((s) => s.title).join(", ")}`
+          : primary.title,
+      );
+      el.title = group.map((s) => s.title).join("\n");
+
+      if (group.some((s) => sel === s.id || hov === s.id)) el.classList.add("is-active");
+
       el.onclick = () => {
-        setSelected(s.id);
-        map.flyTo({ center: [s.lng, s.lat], zoom: 14.5, pitch: 55, duration: 900 });
+        // Cycle through co-located stops on repeated clicks.
+        const current = group.findIndex((s) => s.id === sel);
+        const next = group[(current + 1) % group.length];
+        setSelected(next.id);
+        map.flyTo({ center: [primary.lng, primary.lat], zoom: 14.5, pitch: 55, duration: 900 });
       };
-      const marker = new mapboxgl.Marker({ element: el }).setLngLat([s.lng, s.lat]).addTo(map);
-      markersRef.current.push(marker);
-    });
+
+      markersRef.current.push(
+        new mapboxgl.Marker({ element: el }).setLngLat([primary.lng, primary.lat]).addTo(map),
+      );
+    }
   }
 
+  /**
+   * Frames the day's stops.
+   *
+   * Fitting every stop is wrong when a day contains a long-haul flight: day 1
+   * of a Kyoto trip holds both JFK and Kansai, and the naive bounds zoom out to
+   * the whole Pacific, shrinking the places you actually visit to a dot. So we
+   * frame the densest cluster — the destination — and leave the outliers
+   * on the map to be panned to.
+   */
   function fit(map: mapboxgl.Map, dayStops: TripStop[]) {
     if (dayStops.length === 0) return;
     if (dayStops.length === 1) {
       map.flyTo({ center: [dayStops[0].lng, dayStops[0].lat], zoom: 13.5, pitch: 50, duration: 800 });
       return;
     }
+
+    const focus = densestCluster(dayStops);
     const b = new mapboxgl.LngLatBounds();
-    dayStops.forEach((s) => b.extend([s.lng, s.lat]));
-    map.fitBounds(b, { padding: 100, pitch: 45, duration: 900, maxZoom: 14 });
+    focus.forEach((s) => b.extend([s.lng, s.lat]));
+
+    // Padding larger than the container makes fitBounds throw.
+    const { clientWidth: w, clientHeight: h } = map.getContainer();
+    const padding = Math.max(24, Math.min(100, Math.floor(Math.min(w, h) / 5)));
+
+    if (focus.length === 1) {
+      map.flyTo({ center: [focus[0].lng, focus[0].lat], zoom: 13.5, pitch: 50, duration: 800 });
+      return;
+    }
+    map.fitBounds(b, { padding, pitch: 45, duration: 900, maxZoom: 14 });
+  }
+
+  /**
+   * Largest group of stops within ~1.5° of each other (roughly a metro area).
+   * Falls back to all stops when they're already close together.
+   */
+  function densestCluster(all: TripStop[], degrees = 1.5): TripStop[] {
+    const span = (arr: TripStop[], k: "lat" | "lng") =>
+      Math.max(...arr.map((s) => s[k])) - Math.min(...arr.map((s) => s[k]));
+    if (span(all, "lat") <= degrees * 2 && span(all, "lng") <= degrees * 2) return all;
+
+    let best: TripStop[] = [];
+    for (const seed of all) {
+      const near = all.filter(
+        (s) => Math.abs(s.lat - seed.lat) <= degrees && Math.abs(s.lng - seed.lng) <= degrees,
+      );
+      if (near.length > best.length) best = near;
+    }
+    return best.length ? best : all;
   }
 
   function drawFallback(
@@ -328,6 +445,10 @@ export default function WayportMapOS({ tripId, tripTitle, destination, initialDa
     hov: string | null,
     morph = false,
   ) {
+    // Hard guard: a live Mapbox instance owns this container. Clearing it here
+    // would destroy the GL canvas, and the map has no way to recover.
+    if (mapObj.current) return;
+
     let canvas = container.querySelector("canvas.wp-fallback-map") as HTMLCanvasElement | null;
     if (!canvas) {
       container.innerHTML = "";
@@ -503,6 +624,24 @@ export default function WayportMapOS({ tripId, tripTitle, destination, initialDa
           <div className="font-display text-xs tracking-[0.28em]">WAYPORT</div>
           <div className="mt-1 text-lg font-semibold leading-tight">{tripTitle}</div>
           <div className="text-xs text-text-tertiary">{destination}</div>
+
+          {/* Every trip's map is reachable, not just whichever sorts first. */}
+          {trips && trips.length > 1 && (
+            <select
+              aria-label="Switch trip"
+              className="wp-select mt-2.5 !py-1.5 !text-xs"
+              value={tripId}
+              onChange={(e) => {
+                window.location.href = `/app?tripId=${encodeURIComponent(e.target.value)}`;
+              }}
+            >
+              {trips.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.title}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         <div className="pointer-events-auto flex flex-wrap gap-2">
           {days.map((d) => (
@@ -520,8 +659,14 @@ export default function WayportMapOS({ tripId, tripTitle, destination, initialDa
         </div>
       </div>
 
-      {/* Left timeline */}
-      <aside className="absolute bottom-24 left-4 top-28 z-20 hidden w-[300px] flex-col md:flex">
+      {/* Left timeline — starts below the header card, which grows when the
+          trip switcher is present. */}
+      <aside
+        className={cn(
+          "absolute bottom-24 left-4 z-20 hidden w-[300px] flex-col md:flex",
+          trips && trips.length > 1 ? "top-44" : "top-28",
+        )}
+      >
         <div className="wp-map-panel flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="border-b border-white/10 px-4 py-3">
             <div className="wp-eyebrow">Itinerary</div>

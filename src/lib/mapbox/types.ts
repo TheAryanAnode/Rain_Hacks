@@ -2,6 +2,12 @@
 
 export type TransportMode = "driving" | "walking" | "cycling" | "transit";
 
+/**
+ * Leg mode. Extends TransportMode with "flight" for hops no ground profile can
+ * cover — routing JFK→Kansai as a walk produced a 2,889-hour itinerary.
+ */
+export type LegMode = TransportMode | "flight";
+
 export interface TripStop {
   id: string;
   tripItemId: string;
@@ -24,7 +30,7 @@ export interface RouteLeg {
   toStopId: string;
   distanceMeters: number;
   durationSeconds: number;
-  mode: TransportMode;
+  mode: LegMode;
   geometry: GeoJSON.LineString;
   summary?: string;
 }

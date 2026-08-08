@@ -148,7 +148,7 @@ export default function TripDetail({
           <Link href="/app" className="wp-cta px-4 py-2 text-sm">
             Map OS
           </Link>
-          <Link href="/app/concierge" className="wp-cta-ghost px-4 py-2 text-sm">
+          <Link href="/app/trips/new" className="wp-cta-ghost px-4 py-2 text-sm">
             Concierge
           </Link>
         </div>

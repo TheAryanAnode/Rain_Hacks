@@ -75,7 +75,7 @@ export default async function TripsPage() {
           <p className="mx-auto mt-2 max-w-sm text-sm text-text-secondary">
             Describe where you&apos;re going and the Concierge will build the itinerary.
           </p>
-          <Link href="/app/concierge" className="wp-cta mt-6 inline-flex px-6 py-3 text-sm">
+          <Link href="/app/trips/new" className="wp-cta mt-6 inline-flex px-6 py-3 text-sm">
             Start with Concierge
           </Link>
         </div>

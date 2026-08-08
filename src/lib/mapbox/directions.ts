@@ -55,6 +55,34 @@ async function mapboxDirections(
   }
 }
 
+/** Beyond this, no ground profile is plausible — treat the hop as a flight. */
+const GROUND_LIMIT_METERS = 300_000;
+/** Cruise speed incl. taxi/climb, used only to label flight legs. */
+const FLIGHT_SPEED_MPS = 220;
+/**
+ * Past this, nobody is walking regardless of the selected mode — an airport
+ * transfer is a train or a car. Legs above it are timed and labelled as driving
+ * so a 40 km hop doesn't read as a three-hour stroll.
+ */
+const WALKABLE_LIMIT_METERS = 8_000;
+
+const GROUND_SPEED: Record<TransportMode, number> = {
+  walking: 1.35,
+  cycling: 4.5,
+  driving: 8.5,
+  transit: 7.0,
+};
+
+/**
+ * Builds a day's route.
+ *
+ * Consecutive stops are only routed on the ground when they're actually within
+ * ground range. A day containing a long-haul flight (JFK in the morning, Kyoto
+ * that evening) previously asked Mapbox for a walking route across the Pacific,
+ * fell back to great-circle distance at walking speed, and reported a 2,889-hour
+ * day. Long hops are now their own leg type: drawn as an arc, timed at cruise
+ * speed, and excluded from the ground totals.
+ */
 export async function buildDayRoute(
   tripId: string,
   dayOffset: number,
@@ -63,57 +91,85 @@ export async function buildDayRoute(
 ): Promise<Route | null> {
   if (stops.length < 2) return null;
   const ordered = [...stops].sort((a, b) => a.order - b.order);
-  const coords = ordered.map((s) => [s.lng, s.lat] as [number, number]);
 
-  const live = await mapboxDirections(coords, mode);
-  const legs: RouteLeg[] = [];
-  let allCoords: [number, number][] = [];
-  let totalDist = 0;
-  let totalDur = 0;
+  const pt = (s: TripStop): [number, number] => [s.lng, s.lat];
 
-  for (let i = 0; i < ordered.length - 1; i++) {
-    const from = ordered[i];
-    const to = ordered[i + 1];
-    const a: [number, number] = [from.lng, from.lat];
-    const b: [number, number] = [to.lng, to.lat];
-    const dist = live?.legs[i]?.distance ?? haversine(a, b) * 1.25;
-    const speed = mode === "walking" ? 1.35 : mode === "cycling" ? 4.5 : 8.5;
-    const dur = live?.legs[i]?.duration ?? dist / speed;
-    const geomCoords = live
-      ? (live.geometry.coordinates.slice(
-          /* approximate segment */ 0,
-        ) as [number, number][])
-      : curve(a, b);
-
-    // Prefer per-leg curve when mock
-    const segmentGeom: GeoJSON.LineString = {
-      type: "LineString",
-      coordinates: live ? [a, b] : curve(a, b),
-    };
-    if (!live) {
-      allCoords = allCoords.concat(curve(a, b));
-    }
-
-    legs.push({
-      fromStopId: from.id,
-      toStopId: to.id,
-      distanceMeters: dist,
-      durationSeconds: dur,
-      mode,
-      geometry: segmentGeom,
-      summary: `${Math.round(dur / 60)} min`,
-    });
-    totalDist += dist;
-    totalDur += dur;
+  // Split into runs of stops that are plausibly connected by ground transport.
+  const runs: TripStop[][] = [[ordered[0]]];
+  for (let i = 1; i < ordered.length; i++) {
+    const gap = haversine(pt(ordered[i - 1]), pt(ordered[i]));
+    if (gap > GROUND_LIMIT_METERS) runs.push([ordered[i]]);
+    else runs[runs.length - 1].push(ordered[i]);
   }
 
-  const geometry: GeoJSON.LineString = live?.geometry ?? {
-    type: "LineString",
-    coordinates: allCoords.length ? allCoords : coords,
-  };
-  if (live) {
-    totalDist = live.distance;
-    totalDur = live.duration;
+  const legs: RouteLeg[] = [];
+  const geometryCoords: [number, number][] = [];
+  let groundDist = 0;
+  let groundDur = 0;
+
+  for (let r = 0; r < runs.length; r++) {
+    const run = runs[r];
+
+    // Ground legs within this run, routed together for an accurate path.
+    if (run.length > 1) {
+      const live = await mapboxDirections(run.map(pt), mode);
+      for (let i = 0; i < run.length - 1; i++) {
+        const a = pt(run[i]);
+        const b = pt(run[i + 1]);
+        const dist = live?.legs[i]?.distance ?? haversine(a, b) * 1.25;
+
+        // Downgrade unwalkable legs to driving, whatever mode was requested.
+        const humanMode: TransportMode =
+          (mode === "walking" || mode === "cycling") && dist > WALKABLE_LIMIT_METERS
+            ? "driving"
+            : mode;
+        const dur =
+          humanMode === mode && live?.legs[i]?.duration
+            ? live.legs[i].duration
+            : dist / GROUND_SPEED[humanMode];
+
+        legs.push({
+          fromStopId: run[i].id,
+          toStopId: run[i + 1].id,
+          distanceMeters: dist,
+          durationSeconds: dur,
+          mode: humanMode,
+          geometry: { type: "LineString", coordinates: [a, b] },
+          summary:
+            humanMode === mode
+              ? `${Math.round(dur / 60)} min`
+              : `${Math.round(dur / 60)} min by car`,
+        });
+        groundDist += dist;
+        groundDur += dur;
+      }
+      geometryCoords.push(
+        ...((live?.geometry.coordinates as [number, number][] | undefined) ??
+          run.flatMap((s, i) => (i === 0 ? [pt(s)] : curve(pt(run[i - 1]), pt(s))))),
+      );
+    } else {
+      geometryCoords.push(pt(run[0]));
+    }
+
+    // The hop into the next run is a flight, not a walk.
+    const next = runs[r + 1];
+    if (next) {
+      const from = run[run.length - 1];
+      const to = next[0];
+      const a = pt(from);
+      const b = pt(to);
+      const dist = haversine(a, b);
+      legs.push({
+        fromStopId: from.id,
+        toStopId: to.id,
+        distanceMeters: dist,
+        durationSeconds: dist / FLIGHT_SPEED_MPS,
+        mode: "flight",
+        geometry: { type: "LineString", coordinates: curve(a, b) },
+        summary: `${Math.round(dist / 1000).toLocaleString()} km flight`,
+      });
+      geometryCoords.push(...curve(a, b));
+    }
   }
 
   return {
@@ -121,10 +177,12 @@ export async function buildDayRoute(
     tripId,
     dayOffset,
     mode,
-    distanceMeters: totalDist,
-    durationSeconds: totalDur,
+    // Totals describe the ground day. Flight legs are listed but not summed in,
+    // so "3h 11m · 26 mi" stays a statement about getting around the city.
+    distanceMeters: groundDist,
+    durationSeconds: groundDur,
     legs,
-    geometry,
+    geometry: { type: "LineString", coordinates: geometryCoords },
     status: "active",
   };
 }
@@ -143,14 +201,20 @@ export async function itemsToStops(
   destination: string,
   tripStart?: Date | null,
 ): Promise<TripStop[]> {
-  const { resolveItemCoords } = await import("./geocoding");
+  const { resolveItemCoords, resolveDestinationCenter } = await import("./geocoding");
+
+  // Resolve the destination once; every item is biased against this anchor.
+  const center = await resolveDestinationCenter(destination);
 
   const stops: TripStop[] = [];
   let order = 0;
   for (const it of items) {
     const start = it.startTime ? new Date(it.startTime) : null;
     const payload = (it.payload ?? {}) as Record<string, unknown>;
-    const coords = await resolveItemCoords(it, destination);
+    const coords = await resolveItemCoords(it, destination, center);
+    // A stop we cannot place is omitted. Pinning it to the destination would
+    // stack unrelated markers on one point and misrepresent the itinerary.
+    if (!coords) continue;
     const meta =
       typeof payload.priceUsd === "number"
         ? null

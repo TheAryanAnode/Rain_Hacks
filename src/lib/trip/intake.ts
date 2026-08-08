@@ -37,8 +37,10 @@ export interface ParsedIntake {
   startDate?: string;
   endDate?: string;
   durationDays?: number;
+  /** Head-count mentioned in the text. A hint only — the picker owns the party. */
   travelers?: number;
   budgetUsd?: number;
+  purpose?: string;
   /** Required fields still unknown, in the order they should be asked. */
   missing: IntakeField[];
 }
@@ -134,6 +136,75 @@ export function parseStartDate(text: string, now = new Date()): string | undefin
   return undefined;
 }
 
+/** Words that end a place name — everything after them belongs to another clause. */
+const CLAUSE_END =
+  "from|leaving|departing|out of|on|for|with|next|starting|beginning|budget|\\$";
+
+/**
+ * Pulls the destination out of "offsite in Lisbon", "trip to Tokyo".
+ *
+ * `originSpan` is the slice already claimed by the origin, so "from SFO to
+ * Lisbon" cannot read SFO as the destination.
+ */
+export function parseDestination(text: string, originSpan?: string): string | undefined {
+  // Remove the origin clause outright — it is the main source of false matches.
+  const cleaned = originSpan
+    ? text.replace(
+        new RegExp(`\\b(from|leaving|departing|out of)\\s+${escapeRe(originSpan)}\\b`, "i"),
+        " ",
+      )
+    : text;
+
+  const patterns = [
+    new RegExp(`\\b(?:to|in|at)\\s+([A-Za-z][A-Za-z\\s'’.-]{1,30}?)(?=\\s+(?:${CLAUSE_END})\\b|[,.]|$)`, "i"),
+  ];
+
+  for (const re of patterns) {
+    const m = cleaned.match(re);
+    const raw = m?.[1]?.trim();
+    // "in 3 weeks" is a date, not a place.
+    if (raw && !/^\d/.test(raw) && !/^(the|a|an)$/i.test(raw)) {
+      return titleCase(raw);
+    }
+  }
+
+  // Fall back to any city we recognize that isn't the origin.
+  const lower = cleaned.toLowerCase();
+  for (const name of Object.keys(AIRPORTS).sort((a, b) => b.length - a.length)) {
+    if (new RegExp(`(^|[^a-z])${escapeRe(name)}([^a-z]|$)`, "i").test(lower)) {
+      return titleCase(name);
+    }
+  }
+  return undefined;
+}
+
+function escapeRe(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function titleCase(s: string) {
+  return s.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+const PURPOSE_WORDS: [RegExp, string][] = [
+  [/\boff-?site\b/i, "OFFSITE"],
+  [/\bconferenc/i, "CONFERENCE"],
+  [/\bclient\s+(visit|meeting)\b/i, "CLIENT_VISIT"],
+  [/\bcustomer\s+visit\b/i, "CLIENT_VISIT"],
+  [/\btraining\b/i, "TRAINING"],
+  [/\brecruit/i, "RECRUITING"],
+  [/\bonsite\b/i, "OFFSITE"],
+  [/\bsummit\b/i, "CONFERENCE"],
+];
+
+/** Detects trip purpose so the policy tier and approval routing start right. */
+export function parsePurpose(text: string): string | undefined {
+  for (const [re, purpose] of PURPOSE_WORDS) {
+    if (re.test(text)) return purpose;
+  }
+  return undefined;
+}
+
 /** Pulls an origin out of phrasing like "from SFO" or "leaving San Francisco". */
 export function parseOrigin(text: string): string | undefined {
   const patterns = [
@@ -189,12 +260,25 @@ export function parseIntake(
     endDate = iso(d);
   }
 
-  const destination = known.destination;
+  // Pass the matched origin so it can't also be read as the destination.
+  const destination = known.destination ?? parseDestination(text, origin);
+  const purpose = known.purpose ?? parsePurpose(text);
+
   const missing = REQUIRED_FIELDS.filter((f) =>
     f === "origin" ? !origin : f === "startDate" ? !startDate : !destination,
   );
 
-  return { origin, destination, startDate, endDate, durationDays, travelers, budgetUsd, missing };
+  return {
+    origin,
+    destination,
+    startDate,
+    endDate,
+    durationDays,
+    travelers,
+    budgetUsd,
+    purpose,
+    missing,
+  };
 }
 
 /** The next question to ask, or null when intake is complete. */

@@ -10,6 +10,7 @@ import {
   type RsvpStatus,
 } from "@/lib/enterprise/program";
 import { toAirportCode } from "@/lib/trip/intake";
+import type { Attendee } from "@/lib/enterprise/program";
 import {
   attendeeFromInput,
   findDirectoryTraveler,
@@ -86,8 +87,70 @@ export async function createTripFromIntake(input: CreateTripInput) {
     coordination,
   });
 
+  // Creating a trip runs the full coordination pass — what the Concierge always
+  // did, now driven by structured intake, so the planner starts with origin,
+  // dates and party in hand instead of inventing a "TBD" destination.
+  let planned = false;
+  let planError: string | undefined;
+  try {
+    const { Orchestrator, defaultAutonomy } = await import("@/lib/agents/orchestrator");
+    const orch = new Orchestrator({
+      userId,
+      tripId: trip.id,
+      autonomy: defaultAutonomy(),
+    });
+    await orch.handleUserMessage(buildPlanningBrief(input, travelers));
+    planned = true;
+  } catch (e) {
+    // A failed plan must not lose the trip. The itinerary can be regenerated;
+    // silently discarding the traveler's intake cannot be undone.
+    planError = e instanceof Error ? e.message : "Planning failed";
+  }
+
   revalidatePath("/app/trips");
-  return { tripId: trip.id };
+  revalidatePath(`/app/trips/${trip.id}`);
+  return { tripId: trip.id, planned, planError };
+}
+
+/**
+ * Turns structured intake into the brief the Orchestrator reads.
+ *
+ * The planner is text-driven, so everything it needs must be stated explicitly.
+ * Previously it received only a raw sentence, which is why trips were created
+ * with no origin and no dates.
+ */
+function buildPlanningBrief(input: CreateTripInput, travelers: Attendee[]): string {
+  const nights =
+    input.endDate && input.startDate
+      ? Math.max(
+          1,
+          Math.round((Date.parse(input.endDate) - Date.parse(input.startDate)) / 86_400_000),
+        )
+      : undefined;
+
+  const lines = [
+    `Plan a business trip to ${input.destination} departing from ${input.origin}.`,
+    `Start date ${input.startDate}${input.endDate ? `, end date ${input.endDate}` : ""}.`,
+    nights ? `Duration ${nights} days.` : "",
+    input.budgetUsd ? `Total budget $${input.budgetUsd}.` : "",
+    input.purpose ? `Purpose: ${input.purpose.toLowerCase().replace(/_/g, " ")}.` : "",
+    input.costCenter ? `Cost center ${input.costCenter}.` : "",
+    travelers.length
+      ? `${travelers.length} travelers: ${travelers
+          .map((t) => `${t.name} (from ${t.originAirport})`)
+          .join(", ")}.`
+      : "Single traveler.",
+  ];
+
+  // Dietary and accessibility needs change what can be booked, so they belong
+  // in the brief rather than being discovered after booking.
+  const needs = travelers.flatMap((t) => [
+    ...(t.dietary ?? []).map((d) => `${t.name}: ${d}`),
+    ...(t.accessibility ?? []).map((a) => `${t.name}: ${a}`),
+  ]);
+  if (needs.length) lines.push(`Requirements — ${needs.join("; ")}.`);
+
+  return lines.filter(Boolean).join(" ");
 }
 
 export async function decideApproval(

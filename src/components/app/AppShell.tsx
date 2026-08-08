@@ -34,7 +34,7 @@ const GROUPS: NavGroup[] = [
     items: [
       { href: "/app", label: "Command Center", icon: LayoutGrid },
       { href: "/app/trips", label: "Trips", icon: Plane },
-      { href: "/app/concierge", label: "AI Concierge", icon: MessageSquare },
+      { href: "/app/trips/new", label: "AI Concierge", icon: MessageSquare },
     ],
   },
   {
@@ -77,9 +77,17 @@ const GROUPS: NavGroup[] = [
   },
 ];
 
+const ALL_HREFS = GROUPS.flatMap((g) => g.items.map((i) => i.href));
+
+/**
+ * Marks one item active. An exact match always wins, so `/app/trips/new`
+ * highlights the Concierge alone rather than lighting up Trips as well.
+ */
 function isActive(pathname: string, href: string) {
   if (href === "/app") return pathname === "/app";
-  return pathname === href || pathname.startsWith(href + "/");
+  if (pathname === href) return true;
+  if (ALL_HREFS.includes(pathname)) return false;
+  return pathname.startsWith(href + "/");
 }
 
 export default function AppShell({ children }: { children: React.ReactNode }) {

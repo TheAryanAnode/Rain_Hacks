@@ -338,24 +338,93 @@ export function buildSanFranciscoTrip(userId: string): DemoTrip {
     proposal,
   };
 
-  const items: DemoItem[] = proposal.flights.flatMap((plan) =>
-    [...plan.outbound_legs, ...plan.return_legs].map((leg, i) => ({
-      id: `sf-${plan.traveler_name.replace(/\s+/g, "")}-${leg.flight_number}-${i}`,
-      tripId: "trip-sf-onsite",
-      kind: "FLIGHT",
-      title: `${leg.origin_airport} → ${leg.destination_airport} · ${plan.traveler_name.split(" ")[0]}`,
-      status: "TENTATIVE",
-      startTime: parseLocal(leg.departure_local_time),
-      endTime: parseLocal(leg.arrival_local_time),
-      location: `${leg.origin_airport} Airport`,
-      payload: {
-        airline: leg.airline,
-        flightNumber: leg.flight_number,
-        provider: "Proposal (unpriced)",
-      },
-      createdAt: new Date(),
-    })),
-  );
+  /**
+   * The trip map shows the shared on-the-ground plan, not every traveler's
+   * flight legs. Fifteen per-person segments across three countries told the
+   * organizer nothing about San Francisco — individual routings live on the
+   * Team and Proposal tabs, which is where they're actually useful.
+   */
+  const arrival = parseLocal(proposal.flights[0]?.destination_arrival_local_time) ?? startOf(proposal.start_date);
+  const day = (offset: number, hour: number, minute = 0) => {
+    const d = startOf(proposal.start_date);
+    d.setUTCDate(d.getUTCDate() + offset);
+    d.setUTCHours(hour, minute, 0, 0);
+    return d;
+  };
+
+  // Coordinates for the two fixed addresses in the proposal, so these pins are
+  // exact rather than dependent on a geocoder round-trip at seed time.
+  const OFFICE = { lat: 37.790373, lng: -122.399199 };
+  const CLANCY = { lat: 37.7857, lng: -122.3972 };
+
+  const mk = (
+    id: string,
+    kind: string,
+    title: string,
+    start: Date,
+    end: Date,
+    location: string,
+    payload: Record<string, unknown> = {},
+  ): DemoItem => ({
+    id: `sf-${id}`,
+    tripId: "trip-sf-onsite",
+    kind,
+    title,
+    status: "TENTATIVE",
+    startTime: start,
+    endTime: end,
+    location,
+    payload: { provider: "Proposal (unpriced)", ...payload },
+    createdAt: new Date(),
+  });
+
+  const items: DemoItem[] = [
+    mk("arrive", "FLIGHT", "All travelers land at SFO", arrival, arrival,
+      "San Francisco International Airport", {
+        destinationAirport: "SFO",
+        description: "Four travelers converge from BER and MUC via FRA, all on LH454.",
+        attendeeCount: travelers.length,
+      }),
+    mk("transfer", "TRANSFER", "SFO → hotel group transfer",
+      day(0, 13, 30), day(0, 14, 15), "San Francisco International Airport", {
+        destinationAirport: "SFO",
+        description: "Shared rideshare for all four travelers; no rental car required.",
+      }),
+    mk("checkin", "HOTEL", "Check in — The Clancy, Autograph Collection",
+      day(0, 15, 0), day(0, 15, 30),
+      proposal.hotel?.address ?? "299 Second Street, San Francisco", {
+        ...CLANCY,
+        hotelName: proposal.hotel?.hotel_name,
+        address: proposal.hotel?.address,
+        roomType: "4 single rooms · 1 wheelchair-accessible",
+        checkIn: "15:00",
+        checkOut: "11:00",
+      }),
+    mk("dinner", "RESTAURANT", "Welcome dinner",
+      day(0, 19, 30), day(0, 21, 30), "Ferry Building Marketplace, San Francisco", {
+        description: "Team dinner on arrival evening. Vegetarian and lactose-free options required.",
+      }),
+    mk("day1", "EVENT", "Q3 planning — full day session",
+      day(1, 9, 0), day(1, 18, 0), proposal.destination_address ?? "525 Market St, San Francisco", {
+        ...OFFICE,
+        description: "Main working session. 8–10 minutes on foot from the hotel.",
+        attendeeCount: travelers.length,
+      }),
+    mk("day2", "EVENT", "Roadmap deep dive",
+      day(2, 9, 30), day(2, 17, 0), proposal.destination_address ?? "525 Market St, San Francisco", {
+        ...OFFICE,
+        attendeeCount: travelers.length,
+      }),
+    mk("offsite", "ACTIVITY", "Team activity — Golden Gate Park",
+      day(3, 10, 0), day(3, 16, 0), "Golden Gate Park, San Francisco", {
+        description: "Optional bonding afternoon before the final working morning.",
+      }),
+    mk("depart", "FLIGHT", "Departures from SFO",
+      day(4, 14, 40), day(4, 14, 40), "San Francisco International Airport", {
+        destinationAirport: "SFO",
+        description: "Three travelers on LH455 to FRA; Tom Weiss on LH459 direct to MUC.",
+      }),
+  ];
 
   return {
     id: "trip-sf-onsite",

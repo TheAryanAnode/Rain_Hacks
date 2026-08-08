@@ -138,24 +138,36 @@ export class PlannerAgent extends BaseAgent {
           status: "TENTATIVE",
           startTime: start,
           endTime: end,
-          location: item.location || coords.geocodedName,
+          location: item.location || coords?.geocodedName,
           payload: {
             notes: item.notes,
             priceUsd: item.priceUsd,
             description: item.description,
             whatToDo: item.whatToDo,
-            lat: coords.lat,
-            lng: coords.lng,
-            geocodedName: coords.geocodedName,
+            // Omitted when the place could not be resolved — the map skips
+            // these rather than pinning them somewhere invented.
+            lat: coords?.lat,
+            lng: coords?.lng,
+            geocodedName: coords?.geocodedName,
             risk: item.kind === "RESTAURANT" && item.dayOffset === 0 ? risk : undefined,
           },
         });
       }
       const grand = plan.items.reduce((s, i) => s + (i.priceUsd ?? 0), 0);
+      // Only fill what intake left blank. The old chat path created trips with
+      // a "TBD" destination for the planner to name, but a trip built from the
+      // Concierge form already has a title and destination the user chose —
+      // overwriting them with an LLM summary loses real input.
+      const existing = demoStore.getTrip(this.ctx.userId, this.ctx.tripId);
+      const isPlaceholder = (v: string | undefined | null) =>
+        !v || /^(tbd|custom|wayport trip|untitled)$/i.test(v.trim());
+
       demoStore.updateTrip(this.ctx.tripId, {
-        destination: plan.destination,
         status: "PLANNING",
-        title: plan.summary?.slice(0, 60) || `Trip to ${plan.destination}`,
+        ...(isPlaceholder(existing?.destination) ? { destination: plan.destination } : {}),
+        ...(isPlaceholder(existing?.title)
+          ? { title: plan.summary?.slice(0, 60) || `Trip to ${plan.destination}` }
+          : {}),
       });
       demoStore.setTripMeta(this.ctx.tripId, { risk });
       const t = demoStore.getTrip(this.ctx.userId, this.ctx.tripId);
@@ -190,15 +202,17 @@ export class PlannerAgent extends BaseAgent {
           status: "TENTATIVE",
           startTime: start,
           endTime: end,
-          location: item.location || coords.geocodedName,
+          location: item.location || coords?.geocodedName,
           payload: {
             notes: item.notes,
             priceUsd: item.priceUsd,
             description: item.description,
             whatToDo: item.whatToDo,
-            lat: coords.lat,
-            lng: coords.lng,
-            geocodedName: coords.geocodedName,
+            // Omitted when the place could not be resolved — the map skips
+            // these rather than pinning them somewhere invented.
+            lat: coords?.lat,
+            lng: coords?.lng,
+            geocodedName: coords?.geocodedName,
             risk: item.kind === "RESTAURANT" && item.dayOffset === 0 ? risk : undefined,
           },
         },

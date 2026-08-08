@@ -20,7 +20,7 @@ export default async function LivePage() {
       {!trip ? (
         <div className="wp-card rounded-2xl p-10 text-center">
           <p className="text-text-secondary">Plan a trip first, then enter Live mode.</p>
-          <Link href="/app/concierge" className="wp-cta mt-4 inline-flex px-5 py-2.5 text-sm">
+          <Link href="/app/trips/new" className="wp-cta mt-4 inline-flex px-5 py-2.5 text-sm">
             Concierge
           </Link>
         </div>

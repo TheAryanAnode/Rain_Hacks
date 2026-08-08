@@ -2,10 +2,11 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, Sparkles } from "lucide-react";
+import { AlertCircle, Check, Sparkles } from "lucide-react";
 import { createTripFromIntake } from "@/app/(app)/app/trips/actions";
 import TravelerPicker from "./TravelerPicker";
 import type { NewTravelerInput } from "@/lib/enterprise/directory";
+import { PURPOSE_LABEL } from "@/lib/enterprise/program";
 import {
   parseIntake,
   toAirportCode,
@@ -28,6 +29,11 @@ export default function NewTripForm() {
   const [error, setError] = useState<string | null>(null);
 
   const [freeText, setFreeText] = useState("");
+  const [parseResult, setParseResult] = useState<{
+    filled: string[];
+    missing: IntakeField[];
+    travelerHint?: number;
+  } | null>(null);
   const [travelerIds, setTravelerIds] = useState<string[]>([]);
   const [adHoc, setAdHoc] = useState<NewTravelerInput[]>([]);
   const [form, setForm] = useState({
@@ -58,23 +64,76 @@ export default function NewTripForm() {
 
   const originCode = form.origin ? toAirportCode(form.origin) : undefined;
 
-  /** Fills whatever the sentence contains; leaves the rest for the user. */
+  /** Routes the concierge answer into whichever field it was asked about. */
+  const [answer, setAnswer] = useState("");
+  function submitAnswer() {
+    const v = answer.trim();
+    const field = missing[0];
+    if (!v || !field) return;
+    set(field, v);
+    setAnswer("");
+  }
+
+  /**
+   * Fills whatever the sentence contains and reports the result.
+   *
+   * Overwrites rather than preserving existing values — you pressed the button
+   * to apply this sentence, so a re-parse after editing the text should take
+   * effect. Fields the sentence says nothing about are left alone.
+   */
   function applyFreeText() {
-    const parsed = parseIntake(freeText, {
-      destination: form.destination || undefined,
-    });
+    const parsed = parseIntake(freeText);
+
     setForm((f) => ({
       ...f,
       origin: parsed.origin ?? f.origin,
+      destination: parsed.destination ?? f.destination,
       startDate: parsed.startDate ?? f.startDate,
       endDate: parsed.endDate ?? f.endDate,
       budgetUsd: parsed.budgetUsd ? String(parsed.budgetUsd) : f.budgetUsd,
+      purpose: parsed.purpose ?? f.purpose,
     }));
+
+    const filled: string[] = [];
+    if (parsed.origin) filled.push(`origin ${parsed.origin}`);
+    if (parsed.destination) filled.push(`destination ${parsed.destination}`);
+    if (parsed.startDate) filled.push(`start ${parsed.startDate}`);
+    if (parsed.endDate) filled.push(`end ${parsed.endDate}`);
+    if (parsed.budgetUsd) filled.push(`budget $${parsed.budgetUsd.toLocaleString()}`);
+    if (parsed.purpose) {
+      const label =
+        (PURPOSE_LABEL as Record<string, string | undefined>)[parsed.purpose] ??
+        parsed.purpose;
+      filled.push(`purpose ${label}`);
+    }
+
+    setParseResult({
+      filled,
+      missing: parsed.missing,
+      // The picker owns the party, so a head-count can only be a nudge.
+      travelerHint:
+        parsed.travelers && parsed.travelers > 1 ? parsed.travelers : undefined,
+    });
   }
+
+  /** Agent stages surfaced while the Orchestrator runs. */
+  const [stages, setStages] = useState<string[]>([]);
 
   function submit() {
     if (missing.length) return;
     setError(null);
+
+    // The action runs the whole coordination pass, so narrate it rather than
+    // leaving a spinner for several seconds.
+    setStages(["Creating the trip…"]);
+    const timers = [
+      window.setTimeout(() => setStages((s) => [...s, "Parsing the brief and scoring trip shapes…"]), 500),
+      window.setTimeout(() => setStages((s) => [...s, "Planner drafting the itinerary…"]), 1400),
+      window.setTimeout(() => setStages((s) => [...s, "Flights · lodging · local agents…"]), 2600),
+      window.setTimeout(() => setStages((s) => [...s, "Writing to the Travel Graph…"]), 4200),
+    ];
+    const clearTimers = () => timers.forEach(window.clearTimeout);
+
     startTransition(async () => {
       const res = await createTripFromIntake({
         title: form.title.trim() || `Trip to ${form.destination.trim()}`,
@@ -88,8 +147,22 @@ export default function NewTripForm() {
         travelerIds,
         newTravelers: adHoc,
       });
-      if (res?.tripId) router.push(`/app/trips/${res.tripId}`);
-      else setError("Could not create the trip. Check the fields and try again.");
+      clearTimers();
+      if (res?.tripId) {
+        // The trip exists either way; a planning failure is worth saying out
+        // loud rather than landing on a silently empty itinerary.
+        if (res.planError) {
+          setStages((s) => [...s, `Trip created, but planning failed: ${res.planError}`]);
+        }
+        router.push(`/app/trips/${res.tripId}`);
+      } else {
+        setStages([]);
+        setError(
+          res?.error
+            ? `Could not create the trip — ${res.error}.`
+            : "Could not create the trip. Check the fields and try again.",
+        );
+      }
     });
   }
 
@@ -119,29 +192,122 @@ export default function NewTripForm() {
             <Sparkles size={13} /> Fill fields
           </button>
         </div>
-        <p className="mt-2 text-xs text-text-tertiary">
-          Anything it can&apos;t work out is left blank for you to complete below.
-        </p>
+        {parseResult ? (
+          <div className="mt-3 space-y-2">
+            {parseResult.filled.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Check size={13} className="shrink-0 text-ok" strokeWidth={2.5} />
+                {parseResult.filled.map((f) => (
+                  <span key={f} className="wp-badge wp-badge-ok">{f}</span>
+                ))}
+              </div>
+            )}
+            {parseResult.filled.length === 0 && (
+              <p className="text-xs text-warn">
+                Nothing recognizable in that sentence — fill the fields below directly.
+              </p>
+            )}
+            {parseResult.missing.length > 0 && (
+              <p className="text-xs text-text-tertiary">
+                Still needed:{" "}
+                {parseResult.missing.map((m) => m.replace(/([A-Z])/g, " $1")).join(", ")}
+              </p>
+            )}
+            {parseResult.travelerHint && (
+              <p className="text-xs text-text-tertiary">
+                Mentioned {parseResult.travelerHint} travelers — select them below.
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-text-tertiary">
+            Anything it can&apos;t work out is left blank for you to complete below.
+          </p>
+        )}
       </section>
 
-      {/* Required fields still outstanding */}
-      {missing.length > 0 && (
-        <div className="flex items-start gap-3 rounded-xl border border-warn/30 bg-warn/8 px-4 py-3">
-          <AlertCircle size={16} className="mt-0.5 shrink-0 text-warn" />
-          <div>
-            <p className="text-sm font-medium text-text-primary">
-              Still needed before WAYPORT can plan
-            </p>
-            <ul className="mt-1.5 space-y-1">
-              {missing.map((m) => (
-                <li key={m} className="text-sm text-text-secondary">
-                  {FIELD_PROMPT[m]}
-                </li>
-              ))}
-            </ul>
+      {/*
+        Concierge prompt. Asks for exactly what's missing, one question at a
+        time, and answers land straight in the matching field — the same
+        back-and-forth the chat used to do, without losing the structured form.
+      */}
+      <section
+        className={`wp-card p-5 ${missing.length ? "ring-1 ring-warn/30" : "ring-1 ring-ok/25"}`}
+        aria-live="polite"
+      >
+        <div className="flex items-start gap-3">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-ember/15 ring-1 ring-ember/25">
+            <Sparkles size={15} className="text-ember" />
+          </span>
+
+          <div className="min-w-0 flex-1">
+            {missing.length === 0 ? (
+              <>
+                <p className="text-sm font-medium text-text-primary">
+                  I have everything I need.
+                </p>
+                <p className="mt-1 text-sm text-text-secondary">
+                  {form.origin} → {form.destination}, {form.startDate}
+                  {form.endDate ? ` to ${form.endDate}` : ""} ·{" "}
+                  {partySize === 0
+                    ? "no travelers selected yet"
+                    : `${partySize} traveler${partySize === 1 ? "" : "s"}`}
+                  . Create the trip and I&apos;ll coordinate flights, lodging and
+                  ground for everyone.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-medium text-text-primary">
+                  {FIELD_PROMPT[missing[0]]}
+                </p>
+                <p className="mt-1 text-xs text-text-tertiary">
+                  {missing.length > 1
+                    ? `${missing.length} answers still needed — I'll ask for the rest after this.`
+                    : "Last thing I need."}
+                </p>
+
+                {/* Answer inline; it writes to the same field below. */}
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                  <input
+                    className="wp-input"
+                    aria-label={FIELD_PROMPT[missing[0]]}
+                    type={missing[0] === "startDate" ? "date" : "text"}
+                    placeholder={
+                      missing[0] === "origin"
+                        ? "San Francisco or SFO"
+                        : missing[0] === "destination"
+                          ? "Lisbon, Portugal"
+                          : ""
+                    }
+                    value={answer}
+                    onChange={(e) => setAnswer(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && submitAnswer()}
+                  />
+                  <button
+                    type="button"
+                    onClick={submitAnswer}
+                    disabled={!answer.trim()}
+                    className="wp-btn-sm shrink-0 disabled:opacity-40"
+                    data-tone="accent"
+                  >
+                    Answer
+                  </button>
+                </div>
+
+                <ul className="mt-3 space-y-1">
+                  {missing.slice(1).map((m) => (
+                    <li key={m} className="flex items-center gap-2 text-xs text-text-tertiary">
+                      <AlertCircle size={11} className="shrink-0 text-warn" />
+                      {FIELD_PROMPT[m]}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
           </div>
         </div>
-      )}
+      </section>
 
       <section className="wp-card space-y-5 p-6">
         <div className="grid gap-4 sm:grid-cols-2">
@@ -261,25 +427,58 @@ export default function NewTripForm() {
         }
       />
 
-      <section className="wp-card p-6">
-        {error && <p className="mb-4 text-sm text-err">{error}</p>}
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={submit}
-            disabled={missing.length > 0 || pending}
-            className="wp-cta px-6 py-3 text-sm disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {pending ? "Creating…" : "Create trip"}
-          </button>
-          <span className="text-xs text-text-tertiary">
-            {missing.length > 0
-              ? `${missing.length} required field${missing.length === 1 ? "" : "s"} left`
-              : partySize > 1
-                ? `${partySize} travelers · coordination enabled`
-                : partySize === 1
-                  ? "1 traveler · solo trip"
-                  : "No travelers selected yet — you can add them later"}
-          </span>
+      <section className="wp-card overflow-hidden">
+        {/* Creating runs a server action then navigates — duration is genuinely
+            unknown, so the bar sweeps rather than claiming a percentage. */}
+        {pending && <div className="wp-progress-indeterminate" role="progressbar" aria-label="Creating trip" />}
+
+        <div className="p-6">
+          {error && <p className="mb-4 text-sm text-err">{error}</p>}
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={submit}
+              disabled={missing.length > 0 || pending}
+              className="wp-cta px-6 py-3 text-sm disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {pending ? "Creating…" : "Create trip"}
+            </button>
+            <span className="text-xs text-text-tertiary" aria-live="polite">
+              {pending
+                ? "Coordinating the trip — this runs the full planning pass."
+                : missing.length > 0
+                  ? `${missing.length} required field${missing.length === 1 ? "" : "s"} left`
+                  : partySize > 1
+                    ? `${partySize} travelers · coordination enabled`
+                    : partySize === 1
+                      ? "1 traveler · solo trip"
+                      : "No travelers selected yet — you can add them later"}
+            </span>
+          </div>
+
+          {/* Live agent trace — the Concierge's work, made visible. */}
+          {stages.length > 0 && (
+            <ol className="mt-4 space-y-1.5 border-t border-white/8 pt-4">
+              {stages.map((s, i) => {
+                const done = i < stages.length - 1;
+                return (
+                  <li key={s} className="flex items-center gap-2.5 font-mono text-xs">
+                    {done ? (
+                      <Check size={12} className="shrink-0 text-ok" strokeWidth={2.5} />
+                    ) : (
+                      <span className="shrink-0 text-ember">
+                        <span className="wp-dot" />
+                        <span className="wp-dot" />
+                        <span className="wp-dot" />
+                      </span>
+                    )}
+                    <span className={done ? "text-text-tertiary" : "text-text-secondary"}>
+                      {s}
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
         </div>
       </section>
     </div>
