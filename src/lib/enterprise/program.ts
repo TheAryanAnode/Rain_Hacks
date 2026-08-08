@@ -79,6 +79,11 @@ export interface Attendee {
   department: string;
   title: string;
   originAirport: string;
+  /** Free-text home city, shown alongside the airport code. */
+  homeCity?: string;
+  /** Home coordinates, for the origin map. */
+  lat?: number;
+  lng?: number;
   rsvp: RsvpStatus;
   travelStatus: TravelStatus;
   inbound?: FlightLeg;
@@ -89,6 +94,12 @@ export interface Attendee {
   nights?: number;
   dietary?: string[];
   accessibility?: string[];
+  seatPreference?: "aisle" | "window" | "no preference";
+  /** Frequent-flyer / hotel programs, e.g. { "Miles & More": "LH4471203" }. */
+  loyaltyNumbers?: Record<string, string>;
+  /** TSA Known Traveler Number. */
+  knownTravelerNumber?: string;
+  airlinePreference?: string;
   /** Set when the traveler asked to deviate (extend, reroute, bring a partner). */
   deviationNote?: string;
 }
@@ -97,8 +108,11 @@ export interface RoomBlock {
   id: string;
   hotelName: string;
   address: string;
-  /** Negotiated corporate rate, if this is a contracted property. */
-  nightlyRateUsd: number;
+  /**
+   * Negotiated corporate rate. Undefined means no quote has come back yet —
+   * distinct from zero, which would read as free.
+   */
+  nightlyRateUsd?: number;
   isContractedRate: boolean;
   roomsHeld: number;
   /** Unassigned rooms are released back to the hotel at cutoff. */
@@ -356,6 +370,11 @@ export interface ProgramCost {
   /** Negative variance as a share of budget, for the meter tone. */
   utilization: number;
   perAttendeeUsd: number;
+  /**
+   * True when no travel on this trip carries a price yet. The UI must say
+   * "not quoted" rather than "$0" — a proposal with no fares is not a free trip.
+   */
+  unpriced: boolean;
 }
 
 export function programCost(p: Program): ProgramCost {
@@ -378,6 +397,7 @@ export function programCost(p: Program): ProgramCost {
     varianceUsd: p.budgetUsd - projected,
     utilization: p.budgetUsd > 0 ? projected / p.budgetUsd : 0,
     perAttendeeUsd: coming.length ? Math.round(projected / coming.length) : 0,
+    unpriced: coming.length > 0 && projected === 0,
   };
 }
 

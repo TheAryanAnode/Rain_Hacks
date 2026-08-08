@@ -10,6 +10,12 @@ import {
   type RsvpStatus,
 } from "@/lib/enterprise/program";
 import { toAirportCode } from "@/lib/trip/intake";
+import {
+  attendeeFromInput,
+  findDirectoryTraveler,
+  toAttendee,
+  type NewTravelerInput,
+} from "@/lib/enterprise/directory";
 
 export interface CreateTripInput {
   title: string;
@@ -17,10 +23,13 @@ export interface CreateTripInput {
   destination: string;
   startDate: string;
   endDate?: string;
-  travelers: number;
   budgetUsd?: number;
   purpose?: string;
   costCenter?: string;
+  /** Directory ids ticked in the picker. */
+  travelerIds?: string[];
+  /** Travelers typed in by hand, not in the directory. */
+  newTravelers?: NewTravelerInput[];
 }
 
 /**
@@ -42,16 +51,25 @@ export async function createTripFromIntake(input: CreateTripInput) {
   }
   const endDate = input.endDate ? new Date(`${input.endDate}T00:00:00Z`) : undefined;
 
+  // Directory picks and hand-entered travelers become one party.
+  const travelers = [
+    ...(input.travelerIds ?? [])
+      .map(findDirectoryTraveler)
+      .filter((d) => d !== undefined)
+      .map(toAttendee),
+    ...(input.newTravelers ?? []).map(attendeeFromInput),
+  ];
+
   // A party of more than one gets the coordination surface; solo trips don't.
   const coordination: TripCoordination | undefined =
-    input.travelers > 1
+    travelers.length > 1
       ? {
           purpose: (input.purpose as ProgramPurpose) ?? "OFFSITE",
           costCenter: input.costCenter,
           policyTier: STANDARD_TIER,
-          travelers: [],
+          travelers,
           roomBlocks: [],
-          approvals: [],
+          approvals: buildApprovals(travelers, STANDARD_TIER),
           agenda: [],
         }
       : undefined;
@@ -96,6 +114,60 @@ export async function decideApproval(
     traveler.travelStatus = approve ? "BOOKED" : "OPTIONS_READY";
   }
 
+  revalidatePath(`/app/trips/${tripId}`);
+}
+
+/**
+ * Adds people to a trip that already exists. A solo trip gains a coordination
+ * surface the moment a second traveler joins.
+ */
+export async function addTravelersToTrip(
+  tripId: string,
+  travelerIds: string[],
+  newTravelers: NewTravelerInput[] = [],
+) {
+  const trip = demoStore.getTripById(tripId);
+  if (!trip) return { error: "trip not found" as const };
+
+  const incoming = [
+    ...travelerIds
+      .map(findDirectoryTraveler)
+      .filter((d) => d !== undefined)
+      .map(toAttendee),
+    ...newTravelers.map(attendeeFromInput),
+  ];
+  if (!incoming.length) return { added: 0 };
+
+  if (!trip.coordination) {
+    trip.coordination = {
+      purpose: "OFFSITE",
+      policyTier: STANDARD_TIER,
+      travelers: [],
+      roomBlocks: [],
+      approvals: [],
+      agenda: [],
+    };
+  }
+
+  // Email is the identity here — re-adding someone must not duplicate them.
+  const seen = new Set(trip.coordination.travelers.map((t) => t.email.toLowerCase()));
+  const added = incoming.filter((t) => !seen.has(t.email.toLowerCase()));
+  trip.coordination.travelers.push(...added);
+  trip.coordination.approvals = buildApprovals(
+    trip.coordination.travelers,
+    trip.coordination.policyTier,
+    trip.coordination.approvals,
+  );
+
+  revalidatePath(`/app/trips/${tripId}`);
+  return { added: added.length };
+}
+
+export async function removeTravelerFromTrip(tripId: string, attendeeId: string) {
+  const coord = demoStore.getTripById(tripId)?.coordination;
+  if (!coord) return;
+  coord.travelers = coord.travelers.filter((t) => t.id !== attendeeId);
+  coord.approvals = coord.approvals.filter((a) => a.attendeeId !== attendeeId);
   revalidatePath(`/app/trips/${tripId}`);
 }
 

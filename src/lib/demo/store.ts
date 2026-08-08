@@ -14,7 +14,8 @@ import type {
   RoomBlock,
   TravelPolicyTier,
 } from "@/lib/enterprise/program";
-import { buildLisbonTrip } from "@/lib/enterprise/seed";
+import type { TripProposal } from "@/lib/enterprise/proposal";
+import { buildLisbonTrip, buildSanFranciscoTrip } from "@/lib/enterprise/seed";
 
 export function isMemoryGraph(): boolean {
   return isDemoMode() || !process.env.DATABASE_URL;
@@ -65,6 +66,11 @@ export type TripCoordination = {
   roomBlocks: RoomBlock[];
   approvals: ApprovalRequest[];
   agenda: AgendaEntry[];
+  /**
+   * Agent-authored plan awaiting go/no-go. Present while the trip is still a
+   * proposal; the Proposal tab renders it and the booking flow consumes it.
+   */
+  proposal?: TripProposal;
 };
 
 export type DemoTrip = {
@@ -305,6 +311,10 @@ export function ensureSampleTrip(userId: string) {
   // point of folding Programs into Trips.
   const lisbon = buildLisbonTrip(userId);
   s.trips.set(lisbon.id, lisbon);
+
+  // A trip still in proposal state — nothing priced, awaiting approval.
+  const sf = buildSanFranciscoTrip(userId);
+  s.trips.set(sf.id, sf);
 }
 
 function mkItem(

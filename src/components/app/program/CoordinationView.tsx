@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import TripTabs from "./TripTabs";
 import TeamTab from "./TeamTab";
+import ProposalView from "./ProposalView";
 import {
   arrivalClusters,
   fmtDateTime,
@@ -121,26 +122,49 @@ export default function CoordinationView({
         </div>
         <div className="wp-stat">
           <span className="wp-stat-label">Projected spend</span>
-          <span className="wp-stat-value">{usd(cost.projectedUsd)}</span>
-          <div className="wp-progress mt-1">
-            <div
-              className="wp-progress-fill"
-              data-tone={budgetTone}
-              style={{ width: `${Math.min(100, Math.round(cost.utilization * 100))}%` }}
-            />
-          </div>
-          <span className="text-xs text-text-tertiary">of {usd(cost.budgetUsd)}</span>
+          {/* Nothing priced yet reads as "not quoted", never as $0. */}
+          {cost.unpriced ? (
+            <>
+              <span className="wp-stat-value text-warn">Not quoted</span>
+              <span className="text-xs text-text-tertiary">
+                Budget {usd(cost.budgetUsd)} · awaiting live fares
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="wp-stat-value">{usd(cost.projectedUsd)}</span>
+              <div className="wp-progress mt-1">
+                <div
+                  className="wp-progress-fill"
+                  data-tone={budgetTone}
+                  style={{ width: `${Math.min(100, Math.round(cost.utilization * 100))}%` }}
+                />
+              </div>
+              <span className="text-xs text-text-tertiary">of {usd(cost.budgetUsd)}</span>
+            </>
+          )}
         </div>
         <div className="wp-stat">
           <span className="wp-stat-label">
-            {cost.varianceUsd >= 0 ? "Remaining" : "Over budget"}
+            {cost.unpriced ? "Budget compliance" : cost.varianceUsd >= 0 ? "Remaining" : "Over budget"}
           </span>
-          <span className={`wp-stat-value ${cost.varianceUsd < 0 ? "text-err" : "text-ok"}`}>
-            {usd(Math.abs(cost.varianceUsd))}
-          </span>
-          <span className="text-xs text-text-tertiary">
-            {usd(cost.perAttendeeUsd)} per traveler
-          </span>
+          {cost.unpriced ? (
+            <>
+              <span className="wp-stat-value text-warn">Unknown</span>
+              <span className="text-xs text-text-tertiary">
+                Cannot be checked without prices
+              </span>
+            </>
+          ) : (
+            <>
+              <span className={`wp-stat-value ${cost.varianceUsd < 0 ? "text-err" : "text-ok"}`}>
+                {usd(Math.abs(cost.varianceUsd))}
+              </span>
+              <span className="text-xs text-text-tertiary">
+                {usd(cost.perAttendeeUsd)} per traveler
+              </span>
+            </>
+          )}
         </div>
         <div className="wp-stat">
           <span className="wp-stat-label">Ground transfers</span>
@@ -154,6 +178,20 @@ export default function CoordinationView({
 
       <TripTabs
         tabs={[
+          // A trip still awaiting go/no-go leads with the proposal, since
+          // nothing else on the page is actionable until it's approved.
+          ...(c.proposal
+            ? [
+                {
+                  id: "proposal",
+                  label: "Proposal",
+                  badge: c.proposal.flags.filter((f) => f.severity === "critical").length
+                    ? String(c.proposal.flags.filter((f) => f.severity === "critical").length)
+                    : undefined,
+                  panel: <ProposalView proposal={c.proposal} />,
+                },
+              ]
+            : []),
           { id: "itinerary", label: "Itinerary", panel: itinerary },
           {
             id: "team",
@@ -283,9 +321,13 @@ export default function CoordinationView({
                         )}
                       </div>
                       <div className="mt-4 flex items-baseline justify-between text-sm">
-                        <span className="tabular-nums text-text-secondary">
-                          {usd(s.block.nightlyRateUsd)}/night
-                        </span>
+                        {s.block.nightlyRateUsd ? (
+                          <span className="tabular-nums text-text-secondary">
+                            {usd(s.block.nightlyRateUsd)}/night
+                          </span>
+                        ) : (
+                          <span className="wp-badge wp-badge-warn">Rate not quoted</span>
+                        )}
                         <span className="tabular-nums text-text-tertiary">
                           {s.assigned}/{s.block.roomsHeld} rooms
                         </span>
@@ -365,18 +407,36 @@ export default function CoordinationView({
                     <span className="wp-badge wp-badge-neutral">{c.costCenter}</span>
                   )}
                 </div>
+                {cost.unpriced && (
+                  <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-warn/25 bg-warn/8 px-4 py-3">
+                    <span className="mt-1.5 wp-dot-mark text-warn" />
+                    <p className="text-sm text-text-secondary">
+                      No live fares or rates have come back for this trip, so committed
+                      spend and budget compliance cannot be calculated yet.
+                    </p>
+                  </div>
+                )}
+
                 <div className="mt-5 grid gap-3 sm:grid-cols-3">
                   <div className="wp-card-sunken p-4">
                     <div className="wp-stat-label">Committed</div>
                     <div className="mt-1 text-xl font-semibold tabular-nums">
-                      {usd(cost.committedUsd)}
+                      {cost.unpriced ? (
+                        <span className="text-base text-warn">Not quoted</span>
+                      ) : (
+                        usd(cost.committedUsd)
+                      )}
                     </div>
                     <div className="mt-0.5 text-xs text-text-tertiary">Ticketed and booked</div>
                   </div>
                   <div className="wp-card-sunken p-4">
                     <div className="wp-stat-label">Pipeline</div>
                     <div className="mt-1 text-xl font-semibold tabular-nums">
-                      {usd(cost.pipelineUsd)}
+                      {cost.unpriced ? (
+                        <span className="text-base text-warn">Not quoted</span>
+                      ) : (
+                        usd(cost.pipelineUsd)
+                      )}
                     </div>
                     <div className="mt-0.5 text-xs text-text-tertiary">Priced, not booked</div>
                   </div>
@@ -384,11 +444,17 @@ export default function CoordinationView({
                     <div className="wp-stat-label">Variance</div>
                     <div
                       className={`mt-1 text-xl font-semibold tabular-nums ${
-                        cost.varianceUsd < 0 ? "text-err" : "text-ok"
+                        cost.unpriced ? "text-warn" : cost.varianceUsd < 0 ? "text-err" : "text-ok"
                       }`}
                     >
-                      {cost.varianceUsd < 0 ? "−" : "+"}
-                      {usd(Math.abs(cost.varianceUsd))}
+                      {cost.unpriced ? (
+                        <span className="text-base">Unknown</span>
+                      ) : (
+                        <>
+                          {cost.varianceUsd < 0 ? "−" : "+"}
+                          {usd(Math.abs(cost.varianceUsd))}
+                        </>
+                      )}
                     </div>
                     <div className="mt-0.5 text-xs text-text-tertiary">
                       against {usd(cost.budgetUsd)}

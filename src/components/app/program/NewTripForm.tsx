@@ -4,6 +4,8 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, Sparkles } from "lucide-react";
 import { createTripFromIntake } from "@/app/(app)/app/trips/actions";
+import TravelerPicker from "./TravelerPicker";
+import type { NewTravelerInput } from "@/lib/enterprise/directory";
 import {
   parseIntake,
   toAirportCode,
@@ -26,17 +28,20 @@ export default function NewTripForm() {
   const [error, setError] = useState<string | null>(null);
 
   const [freeText, setFreeText] = useState("");
+  const [travelerIds, setTravelerIds] = useState<string[]>([]);
+  const [adHoc, setAdHoc] = useState<NewTravelerInput[]>([]);
   const [form, setForm] = useState({
     title: "",
     origin: "",
     destination: "",
     startDate: "",
     endDate: "",
-    travelers: "1",
     budgetUsd: "",
     purpose: "OFFSITE",
     costCenter: "",
   });
+
+  const partySize = travelerIds.length + adHoc.length;
 
   const set = (k: keyof typeof form, v: string) =>
     setForm((f) => ({ ...f, [k]: v }));
@@ -63,7 +68,6 @@ export default function NewTripForm() {
       origin: parsed.origin ?? f.origin,
       startDate: parsed.startDate ?? f.startDate,
       endDate: parsed.endDate ?? f.endDate,
-      travelers: parsed.travelers ? String(parsed.travelers) : f.travelers,
       budgetUsd: parsed.budgetUsd ? String(parsed.budgetUsd) : f.budgetUsd,
     }));
   }
@@ -78,10 +82,11 @@ export default function NewTripForm() {
         destination: form.destination.trim(),
         startDate: form.startDate,
         endDate: form.endDate || undefined,
-        travelers: Math.max(1, Number(form.travelers) || 1),
         budgetUsd: form.budgetUsd ? Number(form.budgetUsd) : undefined,
         purpose: form.purpose,
         costCenter: form.costCenter.trim() || undefined,
+        travelerIds,
+        newTravelers: adHoc,
       });
       if (res?.tripId) router.push(`/app/trips/${res.tripId}`);
       else setError("Could not create the trip. Check the fields and try again.");
@@ -197,17 +202,7 @@ export default function NewTripForm() {
           />
         </Field>
 
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Travelers" hint="More than one adds coordination">
-            <input
-              type="number"
-              min={1}
-              className="wp-input"
-              value={form.travelers}
-              onChange={(e) => set("travelers", e.target.value)}
-            />
-          </Field>
-
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Budget (USD)">
             <input
               type="number"
@@ -229,7 +224,7 @@ export default function NewTripForm() {
           </Field>
         </div>
 
-        {Number(form.travelers) > 1 && (
+        {partySize > 1 && (
           <Field label="Purpose" hint="Drives policy tier and approval routing">
             <select
               className="wp-select"
@@ -244,10 +239,31 @@ export default function NewTripForm() {
             </select>
           </Field>
         )}
+      </section>
 
-        {error && <p className="text-sm text-err">{error}</p>}
+      <TravelerPicker
+        selectedIds={travelerIds}
+        onToggle={(id) =>
+          setTravelerIds((ids) =>
+            ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id],
+          )
+        }
+        adHoc={adHoc}
+        onAddAdHoc={(t) =>
+          setAdHoc((list) =>
+            list.some((x) => x.email.toLowerCase() === t.email.toLowerCase())
+              ? list
+              : [...list, t],
+          )
+        }
+        onRemoveAdHoc={(email) =>
+          setAdHoc((list) => list.filter((x) => x.email !== email))
+        }
+      />
 
-        <div className="flex items-center gap-3 border-t border-white/8 pt-5">
+      <section className="wp-card p-6">
+        {error && <p className="mb-4 text-sm text-err">{error}</p>}
+        <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={submit}
             disabled={missing.length > 0 || pending}
@@ -255,11 +271,15 @@ export default function NewTripForm() {
           >
             {pending ? "Creating…" : "Create trip"}
           </button>
-          {missing.length > 0 && (
-            <span className="text-xs text-text-tertiary">
-              {missing.length} required field{missing.length === 1 ? "" : "s"} left
-            </span>
-          )}
+          <span className="text-xs text-text-tertiary">
+            {missing.length > 0
+              ? `${missing.length} required field${missing.length === 1 ? "" : "s"} left`
+              : partySize > 1
+                ? `${partySize} travelers · coordination enabled`
+                : partySize === 1
+                  ? "1 traveler · solo trip"
+                  : "No travelers selected yet — you can add them later"}
+          </span>
         </div>
       </section>
     </div>

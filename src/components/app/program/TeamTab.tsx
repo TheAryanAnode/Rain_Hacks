@@ -1,8 +1,14 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { Check, X, Plane, ShieldAlert, Users } from "lucide-react";
-import { decideApproval } from "@/app/(app)/app/trips/actions";
+import { Check, X, Plane, ShieldAlert, UserPlus, Users } from "lucide-react";
+import {
+  addTravelersToTrip,
+  decideApproval,
+  removeTravelerFromTrip,
+} from "@/app/(app)/app/trips/actions";
+import TravelerPicker from "./TravelerPicker";
+import type { NewTravelerInput } from "@/lib/enterprise/directory";
 import {
   attendeeCost,
   cabinLabel,
@@ -62,6 +68,34 @@ export default function TeamTab({
   const [pending, startTransition] = useTransition();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+
+  // Add-travellers drawer state.
+  const [addingOpen, setAddingOpen] = useState(false);
+  const [pickIds, setPickIds] = useState<string[]>([]);
+  const [pickNew, setPickNew] = useState<NewTravelerInput[]>([]);
+
+  // Already-on-the-trip emails, so the picker can't re-add someone.
+  const onTrip = useMemo(
+    () => new Set(travelers.map((t) => t.email.toLowerCase())),
+    [travelers],
+  );
+
+  function commitAdditions() {
+    startTransition(async () => {
+      await addTravelersToTrip(tripId, pickIds, pickNew);
+      setPickIds([]);
+      setPickNew([]);
+      setAddingOpen(false);
+    });
+  }
+
+  function removeTraveler(attendeeId: string) {
+    setBusyId(attendeeId);
+    startTransition(async () => {
+      await removeTravelerFromTrip(tripId, attendeeId);
+      setBusyId(null);
+    });
+  }
 
   const blockName = useMemo(
     () => new Map(roomBlocks.map((b) => [b.id, b.hotelName])),
@@ -173,19 +207,68 @@ export default function TeamTab({
             <h2 className="wp-section-title">Roster</h2>
             <span className="text-sm text-text-tertiary">{travelers.length} invited</span>
           </div>
-          <div className="wp-seg">
-            {FILTERS.map((f) => (
-              <button
-                key={f.id}
-                onClick={() => setFilter(f.id)}
-                data-active={filter === f.id}
-                className="wp-seg-item"
-              >
-                {f.label}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="wp-seg">
+              {FILTERS.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setFilter(f.id)}
+                  data-active={filter === f.id}
+                  className="wp-seg-item"
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setAddingOpen((o) => !o)}
+              className="wp-btn-sm"
+              data-tone={addingOpen ? undefined : "accent"}
+            >
+              {addingOpen ? <X size={13} /> : <UserPlus size={13} />}
+              {addingOpen ? "Close" : "Add travelers"}
+            </button>
           </div>
         </div>
+
+        {addingOpen && (
+          <div className="mt-5 space-y-3">
+            <TravelerPicker
+              selectedIds={pickIds}
+              onToggle={(id) =>
+                setPickIds((ids) =>
+                  ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id],
+                )
+              }
+              adHoc={pickNew}
+              onAddAdHoc={(t) =>
+                setPickNew((list) =>
+                  list.some((x) => x.email.toLowerCase() === t.email.toLowerCase()) ||
+                  onTrip.has(t.email.toLowerCase())
+                    ? list
+                    : [...list, t],
+                )
+              }
+              onRemoveAdHoc={(email) =>
+                setPickNew((list) => list.filter((x) => x.email !== email))
+              }
+            />
+            <div className="flex items-center gap-3">
+              <button
+                onClick={commitAdditions}
+                disabled={pending || pickIds.length + pickNew.length === 0}
+                className="wp-cta px-5 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {pending
+                  ? "Adding…"
+                  : `Add ${pickIds.length + pickNew.length || ""} to trip`.trim()}
+              </button>
+              <span className="text-xs text-text-tertiary">
+                Anyone already on the trip is skipped.
+              </span>
+            </div>
+          </div>
+        )}
 
         <div className="mt-5 space-y-2">
           {visible.map(({ a, flags, cost }) => {
@@ -223,8 +306,12 @@ export default function TeamTab({
                   <span className={`wp-badge ${TRAVEL_TONE[a.travelStatus]}`}>
                     {TRAVEL_LABEL[a.travelStatus]}
                   </span>
-                  <span className="w-20 text-right font-medium tabular-nums text-text-primary">
-                    {cost.totalUsd > 0 ? usd(cost.totalUsd) : "—"}
+                  <span className="w-24 text-right font-medium tabular-nums text-text-primary">
+                    {cost.totalUsd > 0 ? (
+                      usd(cost.totalUsd)
+                    ) : (
+                      <span className="text-xs font-normal text-warn">Not quoted</span>
+                    )}
                   </span>
                 </button>
 
@@ -296,8 +383,9 @@ export default function TeamTab({
                               {blockName.get(a.roomBlockId)}
                             </div>
                             <div className="mt-1 text-text-secondary tabular-nums">
-                              {usd(a.nightlyRateUsd ?? 0)}/night · {a.nights} nights ·{" "}
-                              {usd((a.nightlyRateUsd ?? 0) * (a.nights ?? 0))} total
+                              {a.nightlyRateUsd
+                                ? `${usd(a.nightlyRateUsd)}/night · ${a.nights} nights · ${usd(a.nightlyRateUsd * (a.nights ?? 0))} total`
+                                : `${a.nights ?? "?"} nights · rate not quoted`}
                             </div>
                           </>
                         ) : (
@@ -307,20 +395,67 @@ export default function TeamTab({
 
                       <div className="rounded-lg border border-white/8 p-3.5">
                         <div className="text-xs uppercase tracking-[0.14em] text-text-tertiary">
-                          Requirements
+                          Traveler profile
                         </div>
                         <div className="mt-1.5 flex flex-wrap gap-1">
                           {[...(a.dietary ?? []), ...(a.accessibility ?? [])].map((n) => (
                             <span key={n} className="wp-badge wp-badge-neutral">{n}</span>
                           ))}
-                          {!a.dietary?.length && !a.accessibility?.length && (
-                            <span className="text-text-tertiary">None recorded</span>
+                          {a.seatPreference && (
+                            <span className="wp-badge wp-badge-neutral">
+                              {a.seatPreference} seat
+                            </span>
                           )}
+                          {a.airlinePreference && (
+                            <span className="wp-badge wp-badge-neutral">
+                              prefers {a.airlinePreference}
+                            </span>
+                          )}
+                          {!a.dietary?.length &&
+                            !a.accessibility?.length &&
+                            !a.seatPreference &&
+                            !a.airlinePreference && (
+                              <span className="text-text-tertiary">None recorded</span>
+                            )}
                         </div>
+
+                        {/* Loyalty and KTN travel with the person, not the trip. */}
+                        {(a.loyaltyNumbers || a.knownTravelerNumber) && (
+                          <dl className="mt-2.5 space-y-0.5">
+                            {Object.entries(a.loyaltyNumbers ?? {}).map(([prog, num]) => (
+                              <div key={prog} className="flex gap-2">
+                                <dt className="text-text-tertiary">{prog}</dt>
+                                <dd className="font-mono text-text-secondary">{num}</dd>
+                              </div>
+                            ))}
+                            {a.knownTravelerNumber && (
+                              <div className="flex gap-2">
+                                <dt className="text-text-tertiary">KTN</dt>
+                                <dd className="font-mono text-text-secondary">
+                                  {a.knownTravelerNumber}
+                                </dd>
+                              </div>
+                            )}
+                          </dl>
+                        )}
+
                         {a.deviationNote && (
                           <p className="mt-2 text-text-secondary">{a.deviationNote}</p>
                         )}
-                        <p className="mt-2 text-text-tertiary">{a.email}</p>
+
+                        <div className="mt-2.5 flex items-center justify-between gap-3 border-t border-white/8 pt-2.5">
+                          <span className="truncate text-text-tertiary">
+                            {a.email}
+                            {a.homeCity ? ` · ${a.homeCity}` : ""}
+                          </span>
+                          <button
+                            onClick={() => removeTraveler(a.id)}
+                            disabled={pending && busyId === a.id}
+                            className="wp-btn-sm shrink-0 disabled:opacity-50"
+                          >
+                            <X size={12} /> Remove
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>

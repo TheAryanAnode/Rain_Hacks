@@ -16,6 +16,9 @@ import {
   type FlightLeg,
   type RoomBlock,
 } from "./program";
+import { listDirectory, toAttendee } from "./directory";
+import { parseProposal, parseLocal, type TripProposal } from "./proposal";
+import { SF_PROPOSAL_RAW } from "./sf-proposal";
 
 /** Midnight-UTC anchored so server and client render identical dates. */
 function baseDay(offsetDays: number, hour = 0, minute = 0): Date {
@@ -259,4 +262,155 @@ export function buildLisbonTrip(userId: string): DemoTrip {
     bookings: [],
     coordination,
   };
+}
+
+/**
+ * Builds the San Francisco onsite from the agent proposal.
+ *
+ * Attendees are resolved out of the directory by name so the trip carries their
+ * standing details (loyalty numbers, dietary needs, home coordinates) rather
+ * than only what the proposal happened to restate. Flight legs come from the
+ * proposal itself, so the Team tab and the Proposal tab describe one schedule.
+ */
+export function buildSanFranciscoTrip(userId: string): DemoTrip {
+  const parsed = parseProposal(SF_PROPOSAL_RAW);
+  if (!parsed.ok) {
+    // A malformed demo fixture should fail loudly at boot, not render blank.
+    throw new Error(`SF proposal fixture is invalid: ${parsed.errors.join("; ")}`);
+  }
+  const proposal: TripProposal = parsed.proposal;
+
+  const byName = new Map(listDirectory().map((d) => [d.name, d]));
+
+  const travelers: Attendee[] = proposal.flights.map((plan) => {
+    const dir = byName.get(plan.traveler_name);
+    const base: Attendee = dir
+      ? toAttendee(dir)
+      : {
+          id: `att-${plan.traveler_name.toLowerCase().replace(/\s+/g, "-")}`,
+          name: plan.traveler_name,
+          email: `${plan.traveler_name.split(" ")[0].toLowerCase()}@northwind.co`,
+          department: "Unassigned",
+          title: "Traveler",
+          originAirport: plan.home_airport,
+          rsvp: "ACCEPTED",
+          travelStatus: "OPTIONS_READY",
+        };
+
+    const room = proposal.hotel?.rooms.find((r) => r.traveler_name === plan.traveler_name);
+
+    return {
+      ...base,
+      rsvp: "ACCEPTED",
+      // Nothing is priced or ticketed yet — the proposal is the whole point.
+      travelStatus: "OPTIONS_READY",
+      inbound: legFromProposal(plan.outbound_legs),
+      outbound: legFromProposal(plan.return_legs),
+      roomBlockId: room ? "block-clancy" : undefined,
+      // Rate deliberately unset — no quote returned for these dates.
+      nightlyRateUsd: undefined,
+      nights: 4,
+      seatPreference: (plan.seat_preference as Attendee["seatPreference"]) ?? base.seatPreference,
+      deviationNote: room?.accessibility_notes ?? undefined,
+    };
+  });
+
+  const block: RoomBlock = {
+    id: "block-clancy",
+    hotelName: proposal.hotel?.hotel_name ?? "TBD",
+    address: proposal.hotel?.address ?? "",
+    // No live quote came back; undefined is "not quoted", not free.
+    nightlyRateUsd: undefined,
+    isContractedRate: false,
+    roomsHeld: proposal.hotel?.rooms.length ?? 0,
+    cutoffDate: startOf(proposal.start_date, -7),
+    walkMinutesToVenue: 9,
+  };
+
+  const coordination: TripCoordination = {
+    purpose: "OFFSITE",
+    costCenter: "ENG-2210",
+    policyTier: STANDARD_TIER,
+    travelers,
+    roomBlocks: [block],
+    approvals: buildApprovals(travelers, STANDARD_TIER),
+    agenda: [],
+    proposal,
+  };
+
+  const items: DemoItem[] = proposal.flights.flatMap((plan) =>
+    [...plan.outbound_legs, ...plan.return_legs].map((leg, i) => ({
+      id: `sf-${plan.traveler_name.replace(/\s+/g, "")}-${leg.flight_number}-${i}`,
+      tripId: "trip-sf-onsite",
+      kind: "FLIGHT",
+      title: `${leg.origin_airport} → ${leg.destination_airport} · ${plan.traveler_name.split(" ")[0]}`,
+      status: "TENTATIVE",
+      startTime: parseLocal(leg.departure_local_time),
+      endTime: parseLocal(leg.arrival_local_time),
+      location: `${leg.origin_airport} Airport`,
+      payload: {
+        airline: leg.airline,
+        flightNumber: leg.flight_number,
+        provider: "Proposal (unpriced)",
+      },
+      createdAt: new Date(),
+    })),
+  );
+
+  return {
+    id: "trip-sf-onsite",
+    userId,
+    title: "Q3 Onsite — San Francisco",
+    destination: `${proposal.destination_city}, USA`,
+    origin: "Berlin & Munich",
+    originAirport: null,
+    arrivalAirport: "SFO",
+    status: "DRAFT",
+    mode: "PLANNING",
+    startDate: startOf(proposal.start_date),
+    endDate: startOf(proposal.end_date),
+    createdAt: new Date(),
+    budgets: [
+      {
+        totalBudget: proposal.budget?.total_budget_usd ?? 0,
+        actual: 0,
+        remaining: proposal.budget?.total_budget_usd ?? 0,
+        currency: proposal.budget?.currency ?? "USD",
+      },
+    ],
+    items,
+    alerts: [],
+    edges: [],
+    bookings: [],
+    coordination,
+  };
+}
+
+/** Proposal legs → the FlightLeg shape the roster renders. */
+function legFromProposal(legs: TripProposal["flights"][number]["outbound_legs"]): FlightLeg | undefined {
+  if (!legs.length) return undefined;
+  const first = legs[0];
+  const last = legs[legs.length - 1];
+  const depart = parseLocal(first.departure_local_time);
+  const arrive = parseLocal(last.arrival_local_time);
+  if (!depart || !arrive) return undefined;
+  return {
+    flightNo: legs.map((l) => l.flight_number).join(" / "),
+    carrier: first.airline,
+    origin: first.origin_airport,
+    destination: last.destination_airport,
+    depart,
+    arrive,
+    cabin: "ECONOMY",
+    // Unpriced by design: the proposal returned no live fare.
+    priceUsd: 0,
+    bookedDaysAhead: 30,
+    originTerminal: undefined,
+  };
+}
+
+function startOf(dateStr: string, offsetDays = 0): Date {
+  const d = parseLocal(`${dateStr} 00:00`) ?? new Date();
+  if (offsetDays) d.setUTCDate(d.getUTCDate() + offsetDays);
+  return d;
 }
