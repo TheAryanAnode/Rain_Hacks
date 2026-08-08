@@ -71,7 +71,7 @@ export default function SandboxClient({ tripId }: { tripId?: string }) {
       {!tripId && <p className="text-sm text-text-secondary">Create a trip in Concierge first.</p>}
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="wp-glass rounded-2xl p-6">
+        <div className="wp-card rounded-2xl p-6">
           <div className="wp-eyebrow">Trip state</div>
           {world?.trip ? (
             <ul className="mt-3 space-y-1 text-sm text-text-secondary">
@@ -86,7 +86,7 @@ export default function SandboxClient({ tripId }: { tripId?: string }) {
           )}
         </div>
 
-        <div className="wp-glass rounded-2xl p-6">
+        <div className="wp-card rounded-2xl p-6">
           <div className="wp-eyebrow">Event injection</div>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             {SCENARIOS.map((s) => (
@@ -104,7 +104,7 @@ export default function SandboxClient({ tripId }: { tripId?: string }) {
       </div>
 
       {pipeline.length > 0 && (
-        <div className="wp-glass rounded-2xl p-6">
+        <div className="wp-card rounded-2xl p-6">
           <div className="wp-eyebrow">Agent pipeline (real)</div>
           <ol className="mt-3 space-y-1 font-mono text-xs text-text-secondary">
             {pipeline.map((p, i) => (
@@ -133,7 +133,7 @@ export default function SandboxClient({ tripId }: { tripId?: string }) {
         </div>
       )}
 
-      <div className="wp-glass rounded-2xl p-6">
+      <div className="wp-card rounded-2xl p-6">
         <div className="wp-eyebrow">Event stream</div>
         <ul className="mt-3 space-y-1 font-mono text-sm text-text-secondary">
           {log.length === 0 ? <li>Inject an event to run the real Guardian pipeline.</li> : log.map((l, i) => <li key={i}>{l}</li>)}

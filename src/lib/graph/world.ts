@@ -4,7 +4,7 @@
  */
 
 import type { TravelerDNA } from "./types";
-import { getOrCreateProfile, demoStore, useMemoryGraph } from "../demo/store";
+import { getOrCreateProfile, demoStore, isMemoryGraph } from "../demo/store";
 import { TravelGraph } from "./service";
 import { assertHardConstraints, scoreItinerary, evaluateSoftConstraints, computeQualityVector, type OptimizeFor, type SoftPreference, type TripQualityVector } from "../decision/engine";
 import { valueRewards } from "../tools/rewards/valuation";
@@ -121,7 +121,7 @@ export async function buildWorldModel(
   optimizeFor: OptimizeFor = "balanced",
 ): Promise<WayportWorldModel> {
   const profile = getOrCreateProfile(userId);
-  const trips = useMemoryGraph()
+  const trips = isMemoryGraph()
     ? demoStore.listTrips(userId)
     : await new TravelGraph(userId).listTrips();
 

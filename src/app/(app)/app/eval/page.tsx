@@ -1,12 +1,12 @@
 import PageAsciiHero from "@/components/app/PageAsciiHero";
 import EvalClient from "@/components/app/EvalClient";
 import { requireUserId } from "@/server/auth";
-import { demoStore, useMemoryGraph } from "@/lib/demo/store";
+import { demoStore, isMemoryGraph } from "@/lib/demo/store";
 import { TravelGraph } from "@/lib/graph/service";
 
 export default async function EvalPage() {
   const userId = await requireUserId();
-  const trips = useMemoryGraph()
+  const trips = isMemoryGraph()
     ? demoStore.listTrips(userId)
     : await new TravelGraph(userId).listTrips();
   const tripId = trips[0]?.id;

@@ -17,7 +17,7 @@ export default async function CommandCenter() {
   if (!active) {
     return (
       <div className="flex h-full min-h-[70vh] items-center justify-center p-10">
-        <div className="wp-glass max-w-lg rounded-3xl p-10 text-center">
+        <div className="wp-card max-w-lg rounded-3xl p-10 text-center">
           {isDemoMode() && (
             <p className="mb-4 text-xs text-text-tertiary">Demo mode — graph runs in-memory</p>
           )}

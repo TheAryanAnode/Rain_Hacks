@@ -1,7 +1,7 @@
 import { prisma } from "@/server/db/client";
 import { BaseAgent, type AgentContext } from "./base";
 import { TravelGraph } from "../graph/service";
-import { demoStore, useMemoryGraph } from "../demo/store";
+import { demoStore, isMemoryGraph } from "../demo/store";
 import { getBookingProvider } from "../tools/providers/booking";
 import { mutateWorld } from "../graph/world";
 import { emitTrace } from "./trace";
@@ -109,7 +109,7 @@ export class GuardianAgent extends BaseAgent {
       });
     }
 
-    if (affected.length > 0 && !useMemoryGraph()) {
+    if (affected.length > 0 && !isMemoryGraph()) {
       const fixed = simpleRepair(trip.items, payload);
       for (const change of fixed) {
         await prisma.tripItem.update({
@@ -124,7 +124,7 @@ export class GuardianAgent extends BaseAgent {
       ? `Affected ${affected.length} nodes. Best replacement: ${recommendation.title} at $${recommendation.priceUsd}/night (${recommendation.effective?.effectiveUsd ?? "—"} effective). Approve to mock-book.`
       : `I adjusted ${affected.length} itinerary item${affected.length === 1 ? "" : "s"}. ${violations.length ? "Issues: " + violations.slice(0, 3).join("; ") : "Constraints checked."}`;
 
-    if (useMemoryGraph()) {
+    if (isMemoryGraph()) {
       demoStore.addAlert(this.ctx.tripId!, { title, body, severity: "WARNING" });
     } else {
       await prisma.travelAlert.create({

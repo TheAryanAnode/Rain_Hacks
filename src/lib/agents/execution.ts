@@ -1,6 +1,6 @@
 import { BaseAgent } from "./base";
 import { getBookingProvider, type NormalizedOffer, type BookingResult } from "../tools/providers/booking";
-import { demoStore, useMemoryGraph } from "../demo/store";
+import { demoStore, isMemoryGraph } from "../demo/store";
 import { TravelGraph } from "../graph/service";
 import {
   fundTreasury,
@@ -113,7 +113,7 @@ export class ExecutionAgent extends BaseAgent {
 
     const usedRain = Boolean(booking.rain);
 
-    if (this.ctx.tripId && useMemoryGraph()) {
+    if (this.ctx.tripId && isMemoryGraph()) {
       demoStore.addItem(this.ctx.tripId, {
         kind: offer.kind === "hotel" ? "HOTEL" : offer.kind === "flight" ? "FLIGHT" : offer.kind === "restaurant" ? "RESTAURANT" : "EXPERIENCE",
         title: offer.title,

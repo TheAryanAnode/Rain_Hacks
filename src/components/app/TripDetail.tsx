@@ -28,6 +28,22 @@ type Item = {
     description?: string;
     whatToDo?: string[];
     notes?: string;
+    // Transport / stay specifics, surfaced verbatim on the item.
+    airline?: string;
+    flightNumber?: string;
+    originTerminal?: string;
+    destinationTerminal?: string;
+    gate?: string;
+    seat?: string;
+    aircraft?: string;
+    hotelName?: string;
+    address?: string;
+    roomType?: string;
+    checkIn?: string;
+    checkOut?: string;
+    confirmationCode?: string;
+    provider?: string;
+    attendeeCount?: number;
   } | null;
 };
 
@@ -139,7 +155,7 @@ export default function TripDetail({
       </header>
 
       {shareUrl && (
-        <div className="wp-glass rounded-2xl p-4 text-sm">
+        <div className="wp-card rounded-2xl p-4 text-sm">
           <div className="wp-eyebrow">Shareable proposal</div>
           <a href={shareUrl} className="mt-2 block break-all text-ember" target="_blank" rel="noreferrer">
             {shareUrl}
@@ -192,7 +208,7 @@ export default function TripDetail({
           </p>
           <div className="grid gap-3 md:grid-cols-3">
             {hotelOffers.map((o) => (
-              <div key={o.id} className="wp-glass rounded-2xl p-4 text-sm">
+              <div key={o.id} className="wp-card rounded-2xl p-4 text-sm">
                 <div className="font-medium">{o.title}</div>
                 <div className="mt-1 text-ember">{formatCurrency(o.priceUsd)}</div>
                 {o.effective && (
@@ -208,75 +224,133 @@ export default function TripDetail({
       {tab === "itinerary" && (
         <div className="space-y-4">
           {trip.items.length === 0 ? (
-            <div className="wp-glass rounded-2xl p-10 text-center text-text-secondary">No itinerary items yet.</div>
+            <div className="wp-card rounded-2xl p-10 text-center text-text-secondary">No itinerary items yet.</div>
           ) : (
-            <ol className="space-y-3">
-              {trip.items.map((item) => {
-                const price = item.payload?.priceUsd;
-                const open = openId === item.id;
-                return (
-                  <li key={item.id} className="wp-glass overflow-hidden rounded-2xl">
-                    <button
-                      type="button"
-                      onClick={() => setOpenId(open ? null : item.id)}
-                      className="grid w-full gap-3 p-5 text-left md:grid-cols-[auto,1fr,auto,auto] md:items-center"
-                    >
-                      <div className="font-mono text-sm text-text-tertiary">
-                        {item.startTime
-                          ? new Date(item.startTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-                          : "--:--"}
-                      </div>
-                      <div>
-                        <div className="font-medium">{item.title}</div>
-                        <div className="mt-1 text-xs text-text-tertiary">
-                          {item.kind}
-                          {item.location ? ` · ${item.location}` : ""}
-                        </div>
-                      </div>
-                      <div className="text-sm font-semibold text-ember">
-                        {price != null ? formatCurrency(price) : "—"}
-                      </div>
-                      <span
-                        className={cn(
-                          "rounded-full px-3 py-1 text-xs",
-                          item.status === "CONFIRMED"
-                            ? "bg-ok/10 text-ok"
-                            : item.status === "CANCELLED" || item.status === "DISRUPTED"
-                              ? "bg-err/10 text-err"
-                              : "bg-white/10 text-text-secondary",
-                        )}
-                      >
-                        {item.status.toLowerCase()}
-                      </span>
-                    </button>
-                    {open && (
-                      <div className="border-t border-white/10 bg-black/20 px-5 py-4 text-sm text-text-secondary">
-                        {item.payload?.description && <p>{item.payload.description}</p>}
-                        {item.payload?.whatToDo && item.payload.whatToDo.length > 0 && (
-                          <div className="mt-3">
-                            <div className="wp-eyebrow mb-2">What you can do</div>
-                            <ul className="space-y-1.5">
-                              {item.payload.whatToDo.map((t, i) => (
-                                <li key={i} className="flex gap-2">
-                                  <span className="text-ember">·</span>
-                                  {t}
-                                </li>
+            groupByDay(trip.items).map(([dayKey, dayItems], dayIndex) => (
+              <section key={dayKey} className="space-y-3">
+                {/* Day header — every time below is anchored to this date. */}
+                <div className="flex items-baseline gap-3">
+                  <h3 className="font-display text-sm font-semibold tracking-wide">
+                    {dayKey === "unscheduled"
+                      ? "Unscheduled"
+                      : `Day ${dayIndex + 1} · ${fmtDayHeading(dayKey)}`}
+                  </h3>
+                  <span className="text-xs text-text-tertiary">
+                    {dayItems.length} {dayItems.length === 1 ? "item" : "items"}
+                  </span>
+                </div>
+
+                <ol className="space-y-3">
+                  {dayItems.map((item) => {
+                    const price = item.payload?.priceUsd;
+                    const open = openId === item.id;
+                    const detail = itemDetails(item);
+                    return (
+                      <li key={item.id} className="wp-card overflow-hidden rounded-2xl">
+                        <button
+                          type="button"
+                          onClick={() => setOpenId(open ? null : item.id)}
+                          className="grid w-full gap-3 p-5 text-left md:grid-cols-[auto,1fr,auto,auto] md:items-center"
+                        >
+                          <div className="min-w-[6.5rem] font-mono text-sm text-text-tertiary">
+                            {item.startTime ? (
+                              <>
+                                <div className="text-text-secondary">
+                                  {fmtClock(item.startTime)}
+                                  {item.endTime ? `–${fmtClock(item.endTime)}` : ""}
+                                </div>
+                                <div className="text-[11px]">{fmtShortDay(item.startTime)}</div>
+                              </>
+                            ) : (
+                              "--:--"
+                            )}
+                          </div>
+                          <div>
+                            <div className="font-medium">{item.title}</div>
+                            <div className="mt-1 text-xs text-text-tertiary">
+                              {item.kind}
+                              {item.location ? ` · ${item.location}` : ""}
+                            </div>
+                            {detail.length > 0 && (
+                              <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-text-tertiary">
+                                {detail.map((d) => (
+                                  <span key={d.label}>
+                                    <span className="text-text-secondary">{d.label}</span> {d.value}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-sm font-semibold text-ember">
+                            {price != null ? formatCurrency(price) : "—"}
+                          </div>
+                          <span
+                            className={cn(
+                              "rounded-full px-3 py-1 text-xs",
+                              item.status === "CONFIRMED"
+                                ? "bg-ok/10 text-ok"
+                                : item.status === "CANCELLED" || item.status === "DISRUPTED"
+                                  ? "bg-err/10 text-err"
+                                  : "bg-white/10 text-text-secondary",
+                            )}
+                          >
+                            {item.status.toLowerCase()}
+                          </span>
+                        </button>
+                        {open && (
+                          <div className="border-t border-white/10 bg-black/20 px-5 py-4 text-sm text-text-secondary">
+                            {/* Full timing, spelled out with the date on both ends. */}
+                            <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-2 md:grid-cols-3">
+                              {item.startTime && (
+                                <DetailRow label="Starts" value={fmtFull(item.startTime)} />
+                              )}
+                              {item.endTime && (
+                                <DetailRow label="Ends" value={fmtFull(item.endTime)} />
+                              )}
+                              {item.location && (
+                                <DetailRow label="Location" value={item.location} />
+                              )}
+                              {itemDetails(item).map((d) => (
+                                <DetailRow key={d.label} label={d.label} value={d.value} />
                               ))}
-                            </ul>
+                              {price != null && (
+                                <DetailRow label="Price" value={formatCurrency(price)} />
+                              )}
+                              <DetailRow label="Status" value={item.status.toLowerCase()} />
+                            </dl>
+
+                            {item.payload?.description && (
+                              <p className="mt-4">{item.payload.description}</p>
+                            )}
+                            {item.payload?.whatToDo && item.payload.whatToDo.length > 0 && (
+                              <div className="mt-3">
+                                <div className="wp-eyebrow mb-2">What you can do</div>
+                                <ul className="space-y-1.5">
+                                  {item.payload.whatToDo.map((t, i) => (
+                                    <li key={i} className="flex gap-2">
+                                      <span className="text-ember">·</span>
+                                      {t}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {item.payload?.notes && (
+                              <p className="mt-3 text-xs text-text-tertiary">
+                                Note · {item.payload.notes}
+                              </p>
+                            )}
                           </div>
                         )}
-                        {item.payload?.notes && (
-                          <p className="mt-3 text-xs text-text-tertiary">Note · {item.payload.notes}</p>
-                        )}
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ol>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </section>
+            ))
           )}
 
-          <div className="wp-glass flex flex-wrap items-center justify-between gap-3 rounded-2xl p-5">
+          <div className="wp-card flex flex-wrap items-center justify-between gap-3 rounded-2xl p-5">
             <div>
               <div className="wp-eyebrow">Grand total</div>
               <div className="mt-1 text-2xl font-semibold text-ember">{formatCurrency(grandTotal)}</div>
@@ -291,7 +365,7 @@ export default function TripDetail({
       )}
 
       {tab === "activity" && (
-        <div className="wp-glass space-y-3 rounded-2xl p-6">
+        <div className="wp-card space-y-3 rounded-2xl p-6">
           <div className="wp-eyebrow">Live Agent Activity</div>
           <ul className="space-y-2 font-mono text-sm text-text-secondary">
             {actions.length === 0 ? (
@@ -319,10 +393,10 @@ export default function TripDetail({
       {tab === "alerts" && (
         <div className="space-y-4">
           {trip.alerts.length === 0 ? (
-            <div className="wp-glass rounded-2xl p-10 text-center text-text-secondary">All clear.</div>
+            <div className="wp-card rounded-2xl p-10 text-center text-text-secondary">All clear.</div>
           ) : (
             trip.alerts.map((a) => (
-              <div key={a.id} className="wp-glass rounded-2xl p-5">
+              <div key={a.id} className="wp-card rounded-2xl p-5">
                 <div className="font-medium">{a.title}</div>
                 <div className="mt-1 text-sm text-text-secondary">{a.body}</div>
               </div>
@@ -334,9 +408,119 @@ export default function TripDetail({
   );
 }
 
+/* ── Itinerary helpers ───────────────────────────────────────── */
+
+const CLOCK = new Intl.DateTimeFormat("en-US", {
+  hour: "numeric",
+  minute: "2-digit",
+  timeZone: "UTC",
+});
+const SHORT_DAY = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+});
+const FULL = new Intl.DateTimeFormat("en-US", {
+  weekday: "short",
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  timeZone: "UTC",
+});
+const DAY_HEADING = new Intl.DateTimeFormat("en-US", {
+  weekday: "long",
+  month: "long",
+  day: "numeric",
+  timeZone: "UTC",
+});
+
+function fmtClock(d: string | Date) {
+  return CLOCK.format(new Date(d));
+}
+function fmtShortDay(d: string | Date) {
+  return SHORT_DAY.format(new Date(d));
+}
+/** Full date + time — used wherever a bare clock reading would be ambiguous. */
+function fmtFull(d: string | Date) {
+  return FULL.format(new Date(d));
+}
+function fmtDayHeading(key: string) {
+  return DAY_HEADING.format(new Date(`${key}T00:00:00Z`));
+}
+
+/**
+ * Buckets items by calendar day (UTC) so the timeline reads as Day 1 / Day 2
+ * rather than an undifferentiated list of clock times.
+ */
+function groupByDay(items: Item[]): [string, Item[]][] {
+  const buckets = new Map<string, Item[]>();
+  for (const item of items) {
+    const key = item.startTime
+      ? new Date(item.startTime).toISOString().slice(0, 10)
+      : "unscheduled";
+    const list = buckets.get(key);
+    if (list) list.push(item);
+    else buckets.set(key, [item]);
+  }
+  for (const list of buckets.values()) {
+    list.sort(
+      (a, b) =>
+        new Date(a.startTime ?? 0).getTime() - new Date(b.startTime ?? 0).getTime(),
+    );
+  }
+  return [...buckets.entries()].sort(([a], [b]) =>
+    a === "unscheduled" ? 1 : b === "unscheduled" ? -1 : a.localeCompare(b),
+  );
+}
+
+/** Kind-specific facts worth showing without expanding the row. */
+function itemDetails(item: Item): { label: string; value: string }[] {
+  const p = item.payload;
+  if (!p) return [];
+  const out: { label: string; value: string }[] = [];
+  const add = (label: string, value?: string | number) => {
+    if (value !== undefined && value !== null && value !== "") {
+      out.push({ label, value: String(value) });
+    }
+  };
+
+  if (item.kind === "FLIGHT") {
+    add("Flight", [p.airline, p.flightNumber].filter(Boolean).join(" "));
+    if (p.originTerminal || p.destinationTerminal) {
+      add("Terminal", `${p.originTerminal ?? "—"} → ${p.destinationTerminal ?? "—"}`);
+    }
+    add("Gate", p.gate);
+    add("Seat", p.seat);
+    add("Aircraft", p.aircraft);
+  } else if (item.kind === "HOTEL") {
+    add("Hotel", p.hotelName);
+    add("Address", p.address);
+    add("Room", p.roomType);
+    add("Check-in", p.checkIn);
+    add("Check-out", p.checkOut);
+  } else {
+    add("Attendees", p.attendeeCount);
+  }
+
+  add("Confirmation", p.confirmationCode);
+  add("Provider", p.provider);
+  return out;
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-xs uppercase tracking-[0.12em] text-text-tertiary">{label}</dt>
+      <dd className="mt-0.5 text-text-secondary">{value}</dd>
+    </div>
+  );
+}
+
 function MoneyCard({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
-    <div className={cn("wp-glass rounded-2xl p-5", highlight && "border-ember/40")}>
+    <div className={cn("wp-card rounded-2xl p-5", highlight && "border-ember/40")}>
       <div className="wp-eyebrow">{label}</div>
       <div className="mt-3 text-2xl font-semibold">{value}</div>
     </div>

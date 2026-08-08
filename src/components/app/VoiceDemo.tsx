@@ -52,7 +52,7 @@ export default function VoiceDemo({ tripId, hotelName }: { tripId: string; hotel
   }
 
   return (
-    <div className="wp-glass space-y-3 rounded-2xl p-5">
+    <div className="wp-card space-y-3 rounded-2xl p-5">
       <div className="wp-eyebrow">Voice · late checkout</div>
       <p className="text-sm text-text-secondary">
         Policy gates external calls. Approve once — ElevenLabs speaks the outcome onto the graph.

@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 export default function RiskAwarePanel({ risk }: { risk: RiskDecision }) {
   const chosen = risk.options.find((o) => o.chosen);
   return (
-    <div className="wp-glass space-y-4 rounded-2xl p-5">
+    <div className="wp-card space-y-4 rounded-2xl p-5">
       <div className="wp-eyebrow">Risk-aware planning</div>
       <p className="text-sm text-text-secondary">
         Arrival isn&apos;t a point ETA — it&apos;s a distribution. Dinner is scored by P(success).

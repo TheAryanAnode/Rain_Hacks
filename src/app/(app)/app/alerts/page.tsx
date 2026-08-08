@@ -26,11 +26,11 @@ export default async function AlertsPage() {
       />
 
       {alerts.length === 0 ? (
-        <div className="wp-glass rounded-2xl p-10 text-center text-text-secondary">All clear.</div>
+        <div className="wp-card rounded-2xl p-10 text-center text-text-secondary">All clear.</div>
       ) : (
         <div className="space-y-3">
           {alerts.map((a: any) => (
-            <div key={a.id} className="wp-glass rounded-2xl p-5">
+            <div key={a.id} className="wp-card rounded-2xl p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="wp-eyebrow">{a.tripTitle}</div>

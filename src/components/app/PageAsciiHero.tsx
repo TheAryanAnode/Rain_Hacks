@@ -30,33 +30,58 @@ const VARIANTS: Record<string, Variant> = {
   default: { src: "/images/sunset-horizon.jpg", renderMode: "dither", tint: "#e8905a", cellSize: 9, height: "200px" },
 };
 
+/**
+ * Compact page header for the product surface.
+ *
+ * The ASCII texture is kept as a right-edge accent rather than a full-bleed
+ * banner — inside the app the priority is getting dense content above the fold,
+ * so this is a band, not a hero.
+ */
 export default function PageAsciiHero({
   title,
   eyebrow,
   subtitle,
   variant = "default",
+  actions,
 }: {
   title: string;
   eyebrow?: string;
   subtitle?: string;
   variant?: keyof typeof VARIANTS;
+  /** Optional right-aligned controls (buttons, filters). */
+  actions?: React.ReactNode;
 }) {
   const v = VARIANTS[variant] ?? VARIANTS.default;
   return (
-    <InkGarden
-      height={v.height}
-      className="rounded-3xl"
-      renderMode={v.renderMode}
-      src={v.src}
-      tint={v.tint}
-      cellSize={v.cellSize}
-      animIntensity={55 + (title.length % 20)}
-    >
-      <div className="flex h-full flex-col justify-end bg-gradient-to-t from-black/65 via-black/25 to-transparent p-7 md:p-8">
-        {eyebrow && <p className="wp-eyebrow text-white/75">{eyebrow}</p>}
-        <h1 className="font-display text-4xl font-semibold text-white md:text-5xl">{title}</h1>
-        {subtitle && <p className="mt-2 max-w-xl text-sm text-white/75">{subtitle}</p>}
+    <header className="wp-card relative overflow-hidden">
+      {/* Texture bleeds in from the right and fades out before the text. */}
+      <div
+        className="pointer-events-none absolute inset-y-0 right-0 hidden w-1/2 opacity-45 md:block"
+        style={{ maskImage: "linear-gradient(to right, transparent, black 65%)", WebkitMaskImage: "linear-gradient(to right, transparent, black 65%)" }}
+        aria-hidden
+      >
+        <InkGarden
+          height="100%"
+          renderMode={v.renderMode}
+          src={v.src}
+          tint={v.tint}
+          cellSize={v.cellSize}
+          animIntensity={30}
+        />
       </div>
-    </InkGarden>
+
+      <div className="relative flex flex-wrap items-end justify-between gap-4 p-6 md:p-7">
+        <div className="min-w-0">
+          {eyebrow && <p className="wp-eyebrow">{eyebrow}</p>}
+          <h1 className="font-display mt-1.5 text-2xl font-semibold tracking-tight md:text-3xl">
+            {title}
+          </h1>
+          {subtitle && (
+            <p className="mt-2 max-w-xl text-sm text-text-secondary">{subtitle}</p>
+          )}
+        </div>
+        {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+      </div>
+    </header>
   );
 }

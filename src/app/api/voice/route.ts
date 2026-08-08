@@ -4,7 +4,7 @@ import { VoiceAgent } from "@/lib/agents/voice";
 import { defaultAutonomy } from "@/lib/agents/orchestrator";
 import { emitTrace } from "@/lib/agents/trace";
 import { mutateWorld } from "@/lib/graph/world";
-import { demoStore, useMemoryGraph } from "@/lib/demo/store";
+import { demoStore, isMemoryGraph } from "@/lib/demo/store";
 import { initiateCall } from "@/lib/tools/voice/elevenlabs";
 import { emitEvent } from "@/lib/events/bus";
 
@@ -61,7 +61,7 @@ export async function POST(req: Request) {
   if (tripId) {
     mutateWorld(tripId, { inject: `Voice: ${purpose} → ${result.outcome}` });
     await emitEvent(tripId, "VOICE_CALL_COMPLETED", result as unknown as Record<string, unknown>);
-    if (useMemoryGraph()) {
+    if (isMemoryGraph()) {
       demoStore.addAlert(tripId, {
         title: "Voice call completed",
         body: result.summary,

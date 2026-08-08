@@ -61,7 +61,7 @@ export default function QualityPanel({ tripId }: { tripId: string }) {
         ))}
       </div>
       {quality && (
-        <div className="wp-glass rounded-2xl p-6">
+        <div className="wp-card rounded-2xl p-6">
           <div className="flex items-end justify-between">
             <div className="wp-eyebrow">Trip quality vector</div>
             <div className="text-2xl font-semibold text-ember">{quality.total}</div>

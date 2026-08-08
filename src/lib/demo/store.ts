@@ -6,8 +6,18 @@
 import { isDemoMode } from "@/lib/demo";
 import { randomUUID } from "crypto";
 import { enrichItemMeta } from "@/lib/agents/pricing";
+import type {
+  AgendaEntry,
+  ApprovalRequest,
+  Attendee,
+  ProgramPurpose,
+  RoomBlock,
+  TravelPolicyTier,
+} from "@/lib/enterprise/program";
+import type { TripProposal } from "@/lib/enterprise/proposal";
+import { buildLisbonTrip, buildSanFranciscoTrip } from "@/lib/enterprise/seed";
 
-export function useMemoryGraph(): boolean {
+export function isMemoryGraph(): boolean {
   return isDemoMode() || !process.env.DATABASE_URL;
 }
 
@@ -41,11 +51,37 @@ export type DemoBudget = {
   currency: string;
 };
 
+/**
+ * Group-travel state carried by a trip.
+ *
+ * This is what used to live behind a separate "Programs" concept. Folding it
+ * onto the trip means there is one thing to manage: a solo trip simply has a
+ * party of one and no room blocks.
+ */
+export type TripCoordination = {
+  purpose: ProgramPurpose;
+  costCenter?: string;
+  policyTier: TravelPolicyTier;
+  travelers: Attendee[];
+  roomBlocks: RoomBlock[];
+  approvals: ApprovalRequest[];
+  agenda: AgendaEntry[];
+  /**
+   * Agent-authored plan awaiting go/no-go. Present while the trip is still a
+   * proposal; the Proposal tab renders it and the booking flow consumes it.
+   */
+  proposal?: TripProposal;
+};
+
 export type DemoTrip = {
   id: string;
   userId: string;
   title: string;
   destination: string;
+  /** Where the trip departs from — required before flights can be priced. */
+  origin: string | null;
+  originAirport: string | null;
+  arrivalAirport: string | null;
   status: string;
   mode: string;
   startDate: Date | null;
@@ -56,6 +92,10 @@ export type DemoTrip = {
   alerts: DemoAlert[];
   edges: unknown[];
   bookings: unknown[];
+  /** Present on group trips. Absent means a party of one. */
+  coordination?: TripCoordination;
+  /** Free-form planner annotations (decision traces, provider echoes). */
+  meta?: Record<string, unknown>;
 };
 
 export type DemoAction = {
@@ -177,17 +217,37 @@ export function ensureSampleTrip(userId: string) {
   end.setDate(end.getDate() + 5);
 
   const items: DemoItem[] = [
-    mkItem(tripId, "FLIGHT", "JFK → KIX", "CONFIRMED", start, 9, 840, "Terminal 4"),
-    mkItem(tripId, "TRANSFER", "Airport → Gion", "TENTATIVE", start, 14, 60, "Kansai Airport"),
-    mkItem(tripId, "HOTEL", "Ryokan near Yasaka", "CONFIRMED", start, 15, 30, "Gion"),
-    mkItem(tripId, "RESTAURANT", "Kaiseki dinner", "TENTATIVE", start, 19, 120, "Pontocho"),
+    mkItem(tripId, "FLIGHT", "JFK → KIX", "CONFIRMED", start, 9, 840, "JFK Terminal 4, New York", {
+      airline: "ANA",
+      flightNumber: "NH 109",
+      originTerminal: "4",
+      destinationTerminal: "1",
+      gate: "B22",
+      seat: "34A",
+      aircraft: "Boeing 777-300ER",
+      confirmationCode: "NH8X2K",
+      provider: "Amadeus",
+    }),
+    mkItem(tripId, "TRANSFER", "Airport → Gion", "TENTATIVE", start, 14, 60, "Kansai International Airport, Osaka", {
+      provider: "Haruka Express",
+    }),
+    mkItem(tripId, "HOTEL", "Ryokan near Yasaka", "CONFIRMED", start, 15, 30, "Gion, Kyoto", {
+      hotelName: "Gion Yasaka Ryokan",
+      address: "605-0074 Kyoto, Higashiyama Ward, Gion",
+      roomType: "Tatami suite · sleeps 2",
+      checkIn: "15:00",
+      checkOut: "11:00",
+      confirmationCode: "STY-4471QW",
+      provider: "Stay22",
+    }),
+    mkItem(tripId, "RESTAURANT", "Kaiseki dinner in Pontocho", "TENTATIVE", start, 19, 120, "Pontocho Alley, Kyoto"),
   ];
   const day2 = new Date(start);
   day2.setDate(day2.getDate() + 1);
   items.push(
-    mkItem(tripId, "ACTIVITY", "Fushimi Inari at dawn", "TENTATIVE", day2, 6, 150, "Fushimi"),
-    mkItem(tripId, "ACTIVITY", "Philosopher's Path walk", "TENTATIVE", day2, 14, 120, "Northern Higashiyama"),
-    mkItem(tripId, "RESTAURANT", "Nishiki market lunch", "TENTATIVE", day2, 12, 60, "Nishiki"),
+    mkItem(tripId, "ACTIVITY", "Fushimi Inari at dawn", "TENTATIVE", day2, 6, 150, "Fushimi Inari Taisha, Kyoto"),
+    mkItem(tripId, "ACTIVITY", "Philosopher's Path walk", "TENTATIVE", day2, 14, 120, "Philosopher's Path, Kyoto"),
+    mkItem(tripId, "RESTAURANT", "Nishiki market lunch", "TENTATIVE", day2, 12, 60, "Nishiki Market, Kyoto"),
   );
 
   const trip: DemoTrip = {
@@ -195,6 +255,9 @@ export function ensureSampleTrip(userId: string) {
     userId,
     title: "Kyoto at golden hour",
     destination: "Kyoto, Japan",
+    origin: "New York",
+    originAirport: "JFK",
+    arrivalAirport: "KIX",
     status: "PLANNING",
     mode: "PLANNING",
     startDate: start,
@@ -216,7 +279,7 @@ export function ensureSampleTrip(userId: string) {
     edges: [],
     bookings: [],
   };
-  const seededTotal = items.reduce((s, it) => s + Number((it.payload as any)?.priceUsd ?? 0), 0);
+  const seededTotal = items.reduce((sum, it) => sum + Number(it.payload?.priceUsd ?? 0), 0);
   trip.budgets[0].actual = seededTotal;
   trip.budgets[0].remaining = Math.max(0, 3200 - seededTotal);
   s.trips.set(tripId, trip);
@@ -243,6 +306,15 @@ export function ensureSampleTrip(userId: string) {
     tripId,
     createdAt: new Date(Date.now() - 86_400_000),
   });
+
+  // The group trip lives in the same list as the solo one — that's the whole
+  // point of folding Programs into Trips.
+  const lisbon = buildLisbonTrip(userId);
+  s.trips.set(lisbon.id, lisbon);
+
+  // A trip still in proposal state — nothing priced, awaiting approval.
+  const sf = buildSanFranciscoTrip(userId);
+  s.trips.set(sf.id, sf);
 }
 
 function mkItem(
@@ -254,6 +326,7 @@ function mkItem(
   hour: number,
   durationMin: number,
   location: string,
+  extra: Record<string, unknown> = {},
 ): DemoItem {
   const startTime = new Date(day);
   startTime.setHours(hour, 0, 0, 0);
@@ -273,26 +346,50 @@ function mkItem(
       description: meta.description,
       whatToDo: meta.whatToDo,
       ...coordsFor(location),
+      ...extra,
     },
     createdAt: new Date(),
   };
 }
 
-function coordsFor(location: string): { lat?: number; lng?: number } {
-  const map: Record<string, { lng: number; lat: number }> = {
-    "Terminal 4": { lng: -73.783, lat: 40.644 },
-    "Kansai Airport": { lng: 135.244, lat: 34.434 },
-    Gion: { lng: 135.7751, lat: 35.0037 },
-    Pontocho: { lng: 135.7715, lat: 35.0045 },
-    Fushimi: { lng: 135.7727, lat: 34.9671 },
-    "Northern Higashiyama": { lng: 135.782, lat: 35.002 },
-    Nishiki: { lng: 135.7648, lat: 35.005 },
-  };
-  return map[location] ?? {};
+function coordsFor(location: string): { lat?: number; lng?: number; geocodedName?: string } {
+  const lower = location.toLowerCase();
+  const anchors: { match: string; lng: number; lat: number; name: string }[] = [
+    { match: "terminal 4", lng: -73.783, lat: 40.644, name: "JFK Terminal 4" },
+    { match: "jfk", lng: -73.7781, lat: 40.6413, name: "JFK Airport" },
+    { match: "kansai", lng: 135.244, lat: 34.434, name: "Kansai Airport" },
+    { match: "pontocho", lng: 135.7715, lat: 35.0045, name: "Pontocho" },
+    { match: "fushimi", lng: 135.7727, lat: 34.9671, name: "Fushimi Inari" },
+    { match: "philosopher", lng: 135.7955, lat: 35.0265, name: "Philosopher's Path" },
+    { match: "nishiki", lng: 135.7648, lat: 35.005, name: "Nishiki Market" },
+    { match: "arashiyama", lng: 135.6721, lat: 35.0094, name: "Arashiyama" },
+    { match: "kinkaku", lng: 135.7292, lat: 35.0394, name: "Kinkaku-ji" },
+    { match: "kiyomizu", lng: 135.785, lat: 34.9949, name: "Kiyomizu-dera" },
+    { match: "gion", lng: 135.7751, lat: 35.0037, name: "Gion" },
+    { match: "higashiyama", lng: 135.782, lat: 35.002, name: "Higashiyama" },
+    { match: "yasaka", lng: 135.7786, lat: 35.0036, name: "Yasaka Shrine" },
+  ];
+  for (const a of anchors) {
+    if (lower.includes(a.match)) return { lat: a.lat, lng: a.lng, geocodedName: a.name };
+  }
+  return {};
 }
 
 export const demoStore = {
-  createTrip(userId: string, input: { title: string; destination: string; startDate?: Date; endDate?: Date; budgetUsd?: number }) {
+  createTrip(
+    userId: string,
+    input: {
+      title: string;
+      destination: string;
+      origin?: string;
+      originAirport?: string;
+      arrivalAirport?: string;
+      startDate?: Date;
+      endDate?: Date;
+      budgetUsd?: number;
+      coordination?: TripCoordination;
+    },
+  ) {
     ensureSampleTrip(userId);
     const id = randomUUID();
     const trip: DemoTrip = {
@@ -300,11 +397,15 @@ export const demoStore = {
       userId,
       title: input.title,
       destination: input.destination,
+      origin: input.origin ?? null,
+      originAirport: input.originAirport ?? null,
+      arrivalAirport: input.arrivalAirport ?? null,
       status: "PLANNING",
       mode: "PLANNING",
       startDate: input.startDate ?? null,
       endDate: input.endDate ?? null,
       createdAt: new Date(),
+      coordination: input.coordination,
       budgets: input.budgetUsd
         ? [{ totalBudget: input.budgetUsd, actual: 0, remaining: input.budgetUsd, currency: "USD" }]
         : [{ totalBudget: 2500, actual: 0, remaining: 2500, currency: "USD" }],
@@ -322,6 +423,16 @@ export const demoStore = {
     const t = store().trips.get(tripId);
     if (!t || t.userId !== userId) return null;
     return t;
+  },
+
+  /** Mutable handle for server actions, which act on behalf of the owner. */
+  getTripById(tripId: string) {
+    return store().trips.get(tripId) ?? null;
+  },
+
+  /** Every trip carrying group-coordination state. */
+  listCoordinatedTrips() {
+    return [...store().trips.values()].filter((t) => t.coordination);
   },
 
   listTrips(userId: string) {
@@ -375,12 +486,12 @@ export const demoStore = {
   setTripMeta(tripId: string, meta: Record<string, unknown>) {
     const t = store().trips.get(tripId);
     if (!t) return;
-    (t as any).meta = { ...((t as any).meta ?? {}), ...meta };
+    t.meta = { ...(t.meta ?? {}), ...meta };
   },
 
   getTripMeta(tripId: string) {
     const t = store().trips.get(tripId);
-    return ((t as any)?.meta ?? {}) as Record<string, unknown>;
+    return t?.meta ?? {};
   },
 
   updateTrip(tripId: string, data: Partial<Pick<DemoTrip, "destination" | "status" | "mode" | "title">>) {

@@ -2,13 +2,13 @@ import { prisma } from "@/server/db/client";
 import type { AddItemInput, AddEdgeInput, TripWithGraph, NormalizedTripState, TravelerDNA, PlanningIntent } from "./types";
 import { assertHardConstraints, scoreItinerary, type SymbolicTripState } from "../decision/engine";
 import type { TripItemKind } from "../graph/types";
-import { demoStore, useMemoryGraph } from "../demo/store";
+import { demoStore, isMemoryGraph } from "../demo/store";
 
 export class TravelGraph {
   constructor(private userId: string) {}
 
   async createTrip(input: { title: string; destination: string; startDate?: Date; endDate?: Date; budgetUsd?: number }) {
-    if (useMemoryGraph()) {
+    if (isMemoryGraph()) {
       return demoStore.createTrip(this.userId, input);
     }
     const trip = await prisma.trip.create({
@@ -30,7 +30,7 @@ export class TravelGraph {
   }
 
   async getTrip(query: { tripId: string }): Promise<TripWithGraph | null> {
-    if (useMemoryGraph()) {
+    if (isMemoryGraph()) {
       const t = demoStore.getTrip(this.userId, query.tripId);
       return t as unknown as TripWithGraph | null;
     }
@@ -53,7 +53,7 @@ export class TravelGraph {
   }
 
   async listTrips() {
-    if (useMemoryGraph()) {
+    if (isMemoryGraph()) {
       return demoStore.listTrips(this.userId);
     }
     return prisma.trip.findMany({
@@ -68,7 +68,7 @@ export class TravelGraph {
   }
 
   async addItem(tripId: string, input: AddItemInput) {
-    if (useMemoryGraph()) {
+    if (isMemoryGraph()) {
       return demoStore.addItem(tripId, {
         kind: input.kind,
         title: input.title,

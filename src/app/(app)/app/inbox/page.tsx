@@ -16,7 +16,7 @@ export default async function Inbox() {
         subtitle="Forward confirmations or upload files — WAYPORT extracts entities into the Travel Graph."
       />
 
-      <div className="wp-glass rounded-2xl p-8">
+      <div className="wp-card rounded-2xl p-8">
         <div className="wp-eyebrow">Forward to</div>
         <p className="mt-2 font-mono text-sm">inbox@wayport.dev</p>
         <p className="mt-4 text-sm text-text-secondary">

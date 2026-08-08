@@ -38,6 +38,14 @@ const GROUPS: NavGroup[] = [
     ],
   },
   {
+    id: "company",
+    label: "Company",
+    items: [
+      { href: "/app/travelers", label: "Travelers", icon: Users },
+      { href: "/app/advisor", label: "Advisor", icon: UserRound },
+    ],
+  },
+  {
     id: "live",
     label: "Live",
     items: [
@@ -56,7 +64,6 @@ const GROUPS: NavGroup[] = [
       { href: "/app/autonomy", label: "Autonomy", icon: Settings },
       { href: "/app/money", label: "Money", icon: Wallet },
       { href: "/app/rewards", label: "Rewards", icon: Gift },
-      { href: "/app/travelers", label: "Travelers", icon: Users },
     ],
   },
   {
@@ -65,7 +72,6 @@ const GROUPS: NavGroup[] = [
     items: [
       { href: "/app/sandbox", label: "Sandbox", icon: Sparkles },
       { href: "/app/eval", label: "Eval harness", icon: LayoutGrid },
-      { href: "/app/advisor", label: "Advisor", icon: Users },
       { href: "/app/hospitality", label: "Hospitality", icon: Building2 },
     ],
   },
@@ -80,7 +86,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [open, setOpen] = useState<Record<string, boolean>>({
     trip: true,
-    live: true,
+    company: true,
+    live: false,
     you: false,
     studio: false,
   });
@@ -90,13 +97,29 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen text-white">
       <aside className="sticky top-0 z-30 flex w-[272px] shrink-0 flex-col border-r border-white/10 bg-[#140e0c]/90 backdrop-blur-xl">
-        <div className="flex items-center gap-3 border-b border-white/10 px-5 py-4">
-          <span className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-ember/15 ring-1 ring-ember/30">
-            <WayMark />
-          </span>
-          <div>
-            <div className="font-display text-sm tracking-[0.28em]">WAYPORT</div>
-            <div className="text-[10px] uppercase tracking-[0.32em] text-text-tertiary">Travel OS</div>
+        <div className="border-b border-white/10 px-4 py-4">
+          <Link href="/" className="flex items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-ember/15 ring-1 ring-ember/30">
+              <WayMark />
+            </span>
+            <div>
+              <div className="font-display text-sm tracking-[0.28em]">WAYPORT</div>
+              <div className="text-[10px] uppercase tracking-[0.32em] text-text-tertiary">
+                Travel OS
+              </div>
+            </div>
+          </Link>
+
+          {/* Workspace context — which company's travel you're looking at. */}
+          <div className="wp-card-sunken mt-3.5 flex items-center gap-2.5 px-3 py-2.5">
+            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-white/10 text-[10px] font-semibold">
+              NW
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-xs font-medium">Northwind Labs</div>
+              <div className="truncate text-[10px] text-text-tertiary">Enterprise</div>
+            </div>
+            <ChevronDown size={12} className="text-text-tertiary" />
           </div>
         </div>
 
@@ -121,11 +144,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                         <Link
                           key={href}
                           href={href}
+                          aria-current={active ? "page" : undefined}
                           className={cn(
-                            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition",
-                            active ? "bg-white/10 text-white" : "text-text-secondary hover:bg-white/5 hover:text-white",
+                            "relative flex items-center gap-3 rounded-lg py-2 pl-3 pr-3 text-sm transition",
+                            active
+                              ? "bg-ember/12 text-white"
+                              : "text-text-secondary hover:bg-white/5 hover:text-white",
                           )}
                         >
+                          {/* Left rail marks the active route without shifting layout. */}
+                          <span
+                            className={cn(
+                              "absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-r bg-ember transition-opacity",
+                              active ? "opacity-100" : "opacity-0",
+                            )}
+                          />
                           <Icon size={16} strokeWidth={1.5} className={active ? "text-ember" : ""} />
                           {label}
                         </Link>
@@ -158,10 +191,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <SunsetPointerHost className={mapMode ? "h-full overflow-hidden" : ""}>
-        <div className={cn("relative z-10 min-h-full", mapMode ? "h-full" : "")}>
+      <SunsetPointerHost
+        className={mapMode ? "h-full min-h-0 overflow-hidden !bg-none" : ""}
+        plain={mapMode}
+      >
+        <div className={cn("relative z-10 min-h-full", mapMode ? "h-full min-h-0" : "")}>
           {mapMode ? (
-            <div className="h-full">{children}</div>
+            <div className="h-full min-h-0 bg-[#0c0806]">{children}</div>
           ) : (
             <div className="mx-auto max-w-7xl p-6 md:p-10">{children}</div>
           )}

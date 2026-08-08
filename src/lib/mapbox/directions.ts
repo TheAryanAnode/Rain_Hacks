@@ -143,22 +143,14 @@ export async function itemsToStops(
   destination: string,
   tripStart?: Date | null,
 ): Promise<TripStop[]> {
-  const { geocode, destinationCenter } = await import("./geocoding");
-  const center = destinationCenter(destination);
-  const base = tripStart ?? new Date();
+  const { resolveItemCoords } = await import("./geocoding");
 
   const stops: TripStop[] = [];
   let order = 0;
-  const dayKeys: string[] = [];
   for (const it of items) {
-    const query = it.location || it.title;
-    const g = await geocode(query, center);
     const start = it.startTime ? new Date(it.startTime) : null;
-    const dayKey = start ? start.toISOString().slice(0, 10) : "unknown";
-    if (!dayKeys.includes(dayKey)) dayKeys.push(dayKey);
-    dayKeys.sort();
-    const dayOffset = Math.max(0, dayKeys.indexOf(dayKey));
     const payload = (it.payload ?? {}) as Record<string, unknown>;
+    const coords = await resolveItemCoords(it, destination);
     const meta =
       typeof payload.priceUsd === "number"
         ? null
@@ -168,23 +160,31 @@ export async function itemsToStops(
       tripItemId: it.id,
       title: it.title,
       kind: it.kind,
-      lng: typeof payload.lng === "number" ? (payload.lng as number) : g.lng,
-      lat: typeof payload.lat === "number" ? (payload.lat as number) : g.lat,
-      dayOffset,
+      lng: coords.lng,
+      lat: coords.lat,
+      dayOffset: 0,
       order: order++,
       priceUsd: typeof payload.priceUsd === "number" ? (payload.priceUsd as number) : meta?.priceUsd,
       description: typeof payload.description === "string" ? (payload.description as string) : meta?.description,
       whatToDo: Array.isArray(payload.whatToDo) ? (payload.whatToDo as string[]) : meta?.whatToDo,
       startTime: start?.toISOString() ?? null,
       status: it.status,
-      location: it.location,
+      location: it.location || coords.geocodedName,
     });
   }
-  // Recompute dayOffset after all keys collected
+  // Day buckets from start dates
   const sortedDays = [...new Set(stops.map((s) => (s.startTime ? s.startTime.slice(0, 10) : "unknown")))].sort();
   for (const s of stops) {
     const key = s.startTime ? s.startTime.slice(0, 10) : "unknown";
     s.dayOffset = Math.max(0, sortedDays.indexOf(key));
   }
+  // Stable order within day by time then original order
+  stops.sort((a, b) => {
+    if (a.dayOffset !== b.dayOffset) return a.dayOffset - b.dayOffset;
+    return (a.startTime ?? "").localeCompare(b.startTime ?? "") || a.order - b.order;
+  });
+  stops.forEach((s, i) => {
+    s.order = i;
+  });
   return stops;
 }

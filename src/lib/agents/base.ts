@@ -1,7 +1,7 @@
 import { prisma } from "@/server/db/client";
 import type { AgentKind } from "../db-types";
 import { PolicyEngine, type ActionProposal, type AutonomySettings } from "../policy";
-import { demoStore, useMemoryGraph } from "../demo/store";
+import { demoStore, isMemoryGraph } from "../demo/store";
 
 type JsonVal = { [key: string]: unknown } | unknown[];
 
@@ -20,7 +20,7 @@ export abstract class BaseAgent {
   }
 
   async startTask(input: JsonVal) {
-    if (useMemoryGraph()) {
+    if (isMemoryGraph()) {
       return demoStore.startTask(this.kind, this.ctx.tripId, input);
     }
     return prisma.agentTask.create({
@@ -29,7 +29,7 @@ export abstract class BaseAgent {
   }
 
   async finishTask(taskId: string, result?: JsonVal, error?: string) {
-    if (useMemoryGraph()) {
+    if (isMemoryGraph()) {
       return demoStore.finishTask();
     }
     return prisma.agentTask.update({
@@ -49,7 +49,7 @@ export abstract class BaseAgent {
     rollbackPossible?: boolean;
     status?: "INFO" | "PENDING_APPROVAL" | "APPROVED" | "EXECUTED" | "FAILED" | "CANCELLED";
   }) {
-    if (useMemoryGraph()) {
+    if (isMemoryGraph()) {
       return demoStore.logAction({
         userId: this.ctx.userId,
         tripId: this.ctx.tripId,
