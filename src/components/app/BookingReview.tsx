@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { formatCurrency } from "@/lib/utils";
 import type { NormalizedOffer } from "@/lib/tools/providers/booking";
 
@@ -14,14 +14,34 @@ export default function BookingReview({
   onBooked?: (confirmationCode: string) => void;
 }) {
   const [offer] = useState(initial);
-  const [phase, setPhase] = useState<"review" | "booking" | "done" | "need_approval">("review");
+  const [phase, setPhase] = useState<"review" | "booking" | "done" | "need_approval" | "failed">("review");
   const [steps, setSteps] = useState<string[]>([]);
   const [confirmation, setConfirmation] = useState<string | null>(null);
   const [policyReason, setPolicyReason] = useState<string | null>(null);
+  const [rainConfigured, setRainConfigured] = useState<boolean | null>(null);
+  const [rainInfo, setRainInfo] = useState<{
+    receipt: string;
+    cardLast4: string;
+    merchant: string;
+    amountUsd: number;
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/booking", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "history", limit: 1 }),
+    })
+      .then((r) => r.json())
+      .then((data) => setRainConfigured(Boolean(data.rainConfigured)))
+      .catch(() => setRainConfigured(false));
+  }, []);
 
   async function book(approved = false) {
     setPhase("booking");
     setSteps(["Reviewing policy…"]);
+    setError(null);
     const res = await fetch("/api/booking", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -33,6 +53,16 @@ export default function BookingReview({
       setPhase("need_approval");
       return;
     }
+    if (data.booking?.status === "FAILED" || data.booking?.ok === false) {
+      const staged = (data.booking.steps as string[]) ?? [];
+      setSteps(staged.map((s) => `• ${s}`));
+      setError(data.rainPayment?.reason ?? "Payment failed");
+      setPhase("failed");
+      return;
+    }
+    if (typeof data.rainConfigured === "boolean") {
+      setRainConfigured(data.rainConfigured);
+    }
     if (data.booking) {
       const staged = data.booking.steps as string[];
       for (let i = 0; i < staged.length; i++) {
@@ -40,6 +70,7 @@ export default function BookingReview({
         setSteps(staged.slice(0, i + 1).map((s) => `✓ ${s}`));
       }
       setConfirmation(data.booking.confirmationCode);
+      setRainInfo(data.booking.rain ?? null);
       setPhase("done");
       onBooked?.(data.booking.confirmationCode);
     }
@@ -69,7 +100,13 @@ export default function BookingReview({
       <ul className="text-xs text-text-secondary space-y-1">
         <li>✓ Within budget check</li>
         <li>✓ Preference match via DNA / quality vector</li>
-        <li>✓ Transaction simulated — intelligence is live</li>
+        <li>
+          {rainConfigured === null
+            ? "… checking Rain configuration"
+            : rainConfigured
+              ? "✓ Rain sandbox connected — confirm will charge a scoped card"
+              : "○ Rain not configured — booking stays simulated (set RAIN_* in agents/.env or .env.local)"}
+        </li>
       </ul>
 
       {phase === "review" && (
@@ -93,10 +130,31 @@ export default function BookingReview({
           ))}
         </div>
       )}
+      {phase === "failed" && (
+        <div className="rounded-xl border border-ember/30 bg-ember/10 p-4 space-y-2">
+          <div className="font-semibold text-ember">PAYMENT FAILED</div>
+          <p className="text-xs text-text-secondary">{error}</p>
+          <div className="font-mono text-xs text-text-secondary space-y-1">
+            {steps.map((s) => (
+              <div key={s}>{s}</div>
+            ))}
+          </div>
+          <button onClick={() => book(true)} className="wp-cta px-5 py-2.5 text-sm mt-2">
+            Retry
+          </button>
+        </div>
+      )}
       {phase === "done" && confirmation && (
         <div className="rounded-xl border border-ok/30 bg-ok/10 p-4">
-          <div className="font-semibold text-ok">BOOKED</div>
-          <div className="mt-1 font-mono text-sm">Confirmation {confirmation}</div>
+          <div className="font-semibold text-ok">{rainInfo ? "PAID VIA RAIN" : "BOOKED"}</div>
+          <div className="mt-1 font-mono text-sm">
+            {rainInfo ? `Receipt ${confirmation}` : `Confirmation ${confirmation}`}
+          </div>
+          {rainInfo && (
+            <p className="mt-2 text-xs text-text-secondary">
+              {formatCurrency(rainInfo.amountUsd)} · {rainInfo.merchant} · card ****{rainInfo.cardLast4}
+            </p>
+          )}
           <p className="mt-2 text-xs text-text-secondary">Travel Graph updated with CONFIRMED node.</p>
         </div>
       )}
