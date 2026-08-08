@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "cryptography>=44.0.1",
     "dotenv>=0.9.9",
     "ipykernel>=7.3.0",
     "logfire[system-metrics]>=4.40.0",
