@@ -11,6 +11,7 @@ name = "agents"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "cryptography" },
     { name = "dotenv" },
     { name = "ipykernel" },
     { name = "logfire", extra = ["system-metrics"] },
@@ -22,6 +23,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cryptography", specifier = ">=44.0.1" },
     { name = "dotenv", specifier = ">=0.9.9" },
     { name = "ipykernel", specifier = ">=7.3.0" },
     { name = "logfire", extras = ["system-metrics"], specifier = ">=4.40.0" },

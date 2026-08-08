@@ -226,6 +226,80 @@ RAIN_TOOLS = [
 ]
 
 
+# --- 5. What a spending agent sees -------------------------------------------
+# Deliberately framed as a real company card: real-world names, dollars instead of
+# cents, no mention of the sandbox. The agent should behave as if the money is real.
+#
+# Each purchase burns one scoped card, and Rain caps a user at 10 new cards per 24h
+# (and $5,000 approved spend), so budget roughly ten purchases a day across all runs.
+
+
+def fund_treasury(amount_usd: float) -> str:
+    """Move money from the company account onto the card program's balance.
+
+    Cards spend against this balance, so top it up before buying anything.
+    """
+    fund_collateral(int(round(amount_usd * 100)))
+    return f"Treasury topped up by ${amount_usd:,.2f}."
+
+
+def pay_merchant(
+    merchant_name: str,
+    merchant_category_code: str,
+    amount_usd: float,
+    memo: str = "",
+) -> dict:
+    """Pay a merchant with a single-use virtual card locked to this exact purchase.
+
+    The card is issued for amount_usd only, restricted to merchant_category_code,
+    charged, and never used again. The money leaves the treasury immediately and
+    there is no undo, so check the price before calling.
+
+    merchant_category_code is the 4-digit MCC: 5812 restaurants, 5943 office
+    supplies, 5732 electronics, 5691 clothing, 4511 airlines, 7011 hotels,
+    5999 other retail.
+    """
+    amount_cents = int(round(amount_usd * 100))
+    try:
+        card = issue_scoped_card(amount_cents, allowed_mccs=[merchant_category_code])
+        authorization = authorize_transaction(
+            card["id"], amount_cents, merchant_name, merchant_category_code
+        )
+        settle_transaction(authorization["transactionId"], amount_cents)
+    except RainError as error:
+        return {"status": "declined", "merchant": merchant_name, "reason": str(error)}
+    return {
+        "status": "paid",
+        "receipt": authorization["transactionId"],
+        "merchant": merchant_name,
+        "amount_usd": amount_usd,
+        "card_last4": card["last4"],
+        "memo": memo,
+    }
+
+
+def purchase_history(limit: int = 20) -> list[dict]:
+    """List the card payments made so far, newest first."""
+    history = []
+    for transaction in list_transactions(limit=limit):
+        if transaction.get("type") != "spend":
+            continue  # collateral funding, fees, transfers — not purchases
+        spend = transaction["spend"]
+        history.append(
+            {
+                "receipt": transaction["id"],
+                # sandbox returns merchantName; production also enriches it
+                "merchant": spend.get("merchantName") or spend.get("enrichedMerchantName"),
+                "amount_usd": (spend.get("amount") or 0) / 100,
+                "status": spend.get("status"),
+            }
+        )
+    return history
+
+
+AGENT_TOOLS = [fund_treasury, pay_merchant, purchase_history]
+
+
 if __name__ == "__main__":
     print("1. fund collateral:", fund_collateral(100_000))
 
@@ -240,7 +314,7 @@ if __name__ == "__main__":
     print("4. transactions:")
     for transaction in list_transactions(limit=5):
         spend = transaction.get("spend", {})
-        print("   ", transaction["id"], spend.get("status"), spend.get("amount"), spend.get("enrichedMerchantName"))
+        print("   ", transaction["id"], spend.get("status"), spend.get("amount"), spend.get("merchantName"))
 
     source = {"currency": "usd", "rail": "ach"}
     destination = {
