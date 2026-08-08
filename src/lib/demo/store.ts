@@ -177,17 +177,17 @@ export function ensureSampleTrip(userId: string) {
   end.setDate(end.getDate() + 5);
 
   const items: DemoItem[] = [
-    mkItem(tripId, "FLIGHT", "JFK → KIX", "CONFIRMED", start, 9, 840, "Terminal 4"),
-    mkItem(tripId, "TRANSFER", "Airport → Gion", "TENTATIVE", start, 14, 60, "Kansai Airport"),
-    mkItem(tripId, "HOTEL", "Ryokan near Yasaka", "CONFIRMED", start, 15, 30, "Gion"),
-    mkItem(tripId, "RESTAURANT", "Kaiseki dinner", "TENTATIVE", start, 19, 120, "Pontocho"),
+    mkItem(tripId, "FLIGHT", "JFK → KIX", "CONFIRMED", start, 9, 840, "JFK Terminal 4, New York"),
+    mkItem(tripId, "TRANSFER", "Airport → Gion", "TENTATIVE", start, 14, 60, "Kansai International Airport, Osaka"),
+    mkItem(tripId, "HOTEL", "Ryokan near Yasaka", "CONFIRMED", start, 15, 30, "Gion, Kyoto"),
+    mkItem(tripId, "RESTAURANT", "Kaiseki dinner in Pontocho", "TENTATIVE", start, 19, 120, "Pontocho Alley, Kyoto"),
   ];
   const day2 = new Date(start);
   day2.setDate(day2.getDate() + 1);
   items.push(
-    mkItem(tripId, "ACTIVITY", "Fushimi Inari at dawn", "TENTATIVE", day2, 6, 150, "Fushimi"),
-    mkItem(tripId, "ACTIVITY", "Philosopher's Path walk", "TENTATIVE", day2, 14, 120, "Northern Higashiyama"),
-    mkItem(tripId, "RESTAURANT", "Nishiki market lunch", "TENTATIVE", day2, 12, 60, "Nishiki"),
+    mkItem(tripId, "ACTIVITY", "Fushimi Inari at dawn", "TENTATIVE", day2, 6, 150, "Fushimi Inari Taisha, Kyoto"),
+    mkItem(tripId, "ACTIVITY", "Philosopher's Path walk", "TENTATIVE", day2, 14, 120, "Philosopher's Path, Kyoto"),
+    mkItem(tripId, "RESTAURANT", "Nishiki market lunch", "TENTATIVE", day2, 12, 60, "Nishiki Market, Kyoto"),
   );
 
   const trip: DemoTrip = {
@@ -278,17 +278,27 @@ function mkItem(
   };
 }
 
-function coordsFor(location: string): { lat?: number; lng?: number } {
-  const map: Record<string, { lng: number; lat: number }> = {
-    "Terminal 4": { lng: -73.783, lat: 40.644 },
-    "Kansai Airport": { lng: 135.244, lat: 34.434 },
-    Gion: { lng: 135.7751, lat: 35.0037 },
-    Pontocho: { lng: 135.7715, lat: 35.0045 },
-    Fushimi: { lng: 135.7727, lat: 34.9671 },
-    "Northern Higashiyama": { lng: 135.782, lat: 35.002 },
-    Nishiki: { lng: 135.7648, lat: 35.005 },
-  };
-  return map[location] ?? {};
+function coordsFor(location: string): { lat?: number; lng?: number; geocodedName?: string } {
+  const lower = location.toLowerCase();
+  const anchors: { match: string; lng: number; lat: number; name: string }[] = [
+    { match: "terminal 4", lng: -73.783, lat: 40.644, name: "JFK Terminal 4" },
+    { match: "jfk", lng: -73.7781, lat: 40.6413, name: "JFK Airport" },
+    { match: "kansai", lng: 135.244, lat: 34.434, name: "Kansai Airport" },
+    { match: "pontocho", lng: 135.7715, lat: 35.0045, name: "Pontocho" },
+    { match: "fushimi", lng: 135.7727, lat: 34.9671, name: "Fushimi Inari" },
+    { match: "philosopher", lng: 135.7955, lat: 35.0265, name: "Philosopher's Path" },
+    { match: "nishiki", lng: 135.7648, lat: 35.005, name: "Nishiki Market" },
+    { match: "arashiyama", lng: 135.6721, lat: 35.0094, name: "Arashiyama" },
+    { match: "kinkaku", lng: 135.7292, lat: 35.0394, name: "Kinkaku-ji" },
+    { match: "kiyomizu", lng: 135.785, lat: 34.9949, name: "Kiyomizu-dera" },
+    { match: "gion", lng: 135.7751, lat: 35.0037, name: "Gion" },
+    { match: "higashiyama", lng: 135.782, lat: 35.002, name: "Higashiyama" },
+    { match: "yasaka", lng: 135.7786, lat: 35.0036, name: "Yasaka Shrine" },
+  ];
+  for (const a of anchors) {
+    if (lower.includes(a.match)) return { lat: a.lat, lng: a.lng, geocodedName: a.name };
+  }
+  return {};
 }
 
 export const demoStore = {

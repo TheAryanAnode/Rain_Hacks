@@ -48,7 +48,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       className={`${display.variable} ${sans.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full">{content}</body>
+      <body className="min-h-full" suppressHydrationWarning>
+        {content}
+      </body>
     </html>
   );
 }

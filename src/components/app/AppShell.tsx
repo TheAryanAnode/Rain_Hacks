@@ -158,10 +158,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <SunsetPointerHost className={mapMode ? "h-full overflow-hidden" : ""}>
-        <div className={cn("relative z-10 min-h-full", mapMode ? "h-full" : "")}>
+      <SunsetPointerHost
+        className={mapMode ? "h-full min-h-0 overflow-hidden !bg-none" : ""}
+        plain={mapMode}
+      >
+        <div className={cn("relative z-10 min-h-full", mapMode ? "h-full min-h-0" : "")}>
           {mapMode ? (
-            <div className="h-full">{children}</div>
+            <div className="h-full min-h-0 bg-[#0c0806]">{children}</div>
           ) : (
             <div className="mx-auto max-w-7xl p-6 md:p-10">{children}</div>
           )}

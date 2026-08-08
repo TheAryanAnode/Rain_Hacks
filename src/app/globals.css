@@ -262,6 +262,14 @@ body {
   box-shadow: 0 0 0 6px rgba(232, 144, 90, 0.35);
 }
 
+/* Ensure Mapbox canvas fills its host inside our flex layout */
+.mapboxgl-map,
+.mapboxgl-canvas-container,
+.mapboxgl-canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
 /* Theme-matched range sliders (Travel DNA / Autonomy) */
 .wp-range {
   -webkit-appearance: none;

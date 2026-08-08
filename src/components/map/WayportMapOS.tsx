@@ -8,6 +8,11 @@ import { formatDistance, formatDuration } from "@/lib/mapbox/types";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Plane, Hotel, Utensils, Landmark, MapPin, Footprints, Car } from "lucide-react";
 
+// Serve the worker from /public so Turbopack doesn't break Mapbox's Actor (sendCancelable).
+if (typeof window !== "undefined") {
+  mapboxgl.workerUrl = `${window.location.origin}/mapbox-gl-csp-worker.js`;
+}
+
 const KIND_ICON: Record<string, typeof Plane> = {
   FLIGHT: Plane,
   HOTEL: Hotel,
@@ -30,6 +35,8 @@ export default function WayportMapOS({ tripId, tripTitle, destination, initialDa
   const mapRef = useRef<HTMLDivElement>(null);
   const mapObj = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const stopsRef = useRef<TripStop[]>([]);
+  const routeRef = useRef<Route | null>(null);
 
   const [day, setDay] = useState(initialDay);
   const [days, setDays] = useState<number[]>([0]);
@@ -42,8 +49,12 @@ export default function WayportMapOS({ tripId, tripTitle, destination, initialDa
   const [agentLog, setAgentLog] = useState<string[]>(["Graph loaded", "Routing day stops…"]);
   const [replanning, setReplanning] = useState(false);
   const [token, setToken] = useState<string | null>(null);
+  const [mapError, setMapError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const prevGeomRef = useRef<GeoJSON.LineString | null>(null);
+
+  stopsRef.current = stops;
+  routeRef.current = route;
 
   async function load(dayOffset = day, transport = mode) {
     const res = await fetch(`/api/routing?tripId=${tripId}&dayOffset=${dayOffset}&mode=${transport}`);
@@ -53,7 +64,9 @@ export default function WayportMapOS({ tripId, tripTitle, destination, initialDa
     setAllStops(data.allStops ?? []);
     setRoute(data.route);
     setDays(data.days?.length ? data.days : [0]);
-    setToken(data.mapboxToken);
+    // Mapbox GL JS requires a public token (pk.*) — ignore sk.* if somehow returned
+    const t = typeof data.mapboxToken === "string" && data.mapboxToken.startsWith("pk.") ? data.mapboxToken : null;
+    setToken(t);
     setAgentLog((l) => [...l.slice(-4), `Routed day ${dayOffset + 1} · ${data.route ? formatDuration(data.route.durationSeconds) : "single stop"}`]);
     return data;
   }
@@ -63,35 +76,90 @@ export default function WayportMapOS({ tripId, tripTitle, destination, initialDa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripId]);
 
+  // Create Mapbox map once we have a public token. Strict-mode safe.
   useEffect(() => {
     if (!ready || !mapRef.current) return;
 
-    const hasToken = !!token;
-    if (hasToken && !mapObj.current) {
-      mapboxgl.accessToken = token!;
+    if (!token) {
+      drawFallback(mapRef.current, stopsRef.current, routeRef.current, selected, hover);
+      return;
+    }
+
+    let cancelled = false;
+    const container = mapRef.current;
+
+    // Tear down any prior instance (Strict Mode remount / token change)
+    if (mapObj.current) {
+      mapObj.current.remove();
+      mapObj.current = null;
+      markersRef.current = [];
+    }
+    container.replaceChildren();
+    setMapError(null);
+
+    if (!mapboxgl.supported()) {
+      setMapError("WebGL is not available in this browser — showing fallback map.");
+      drawFallback(container, stopsRef.current, routeRef.current, selected, hover);
+      return;
+    }
+
+    try {
+      mapboxgl.accessToken = token;
       const map = new mapboxgl.Map({
-        container: mapRef.current,
+        container,
         style: "mapbox://styles/mapbox/dark-v11",
-        center: stops[0] ? [stops[0].lng, stops[0].lat] : [135.7681, 35.0116],
+        center: stopsRef.current[0]
+          ? [stopsRef.current[0].lng, stopsRef.current[0].lat]
+          : [135.7681, 35.0116],
         zoom: 12.2,
         pitch: 48,
         bearing: -18,
         antialias: true,
       });
+      mapObj.current = map;
       map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "bottom-right");
-      map.on("load", () => {
-        mapObj.current = map;
-        paint(map, stops, route, selected, hover);
-      });
-      return () => {
-        map.remove();
-        mapObj.current = null;
-      };
-    }
 
-    if (!hasToken && mapRef.current) {
-      // Canvas fallback map (no Mapbox token)
-      drawFallback(mapRef.current, stops, route, selected, hover);
+      map.on("error", (e) => {
+        const msg = e?.error?.message ?? "Mapbox failed to load tiles";
+        if (cancelled) return;
+        setMapError(msg);
+        setAgentLog((l) => [...l.slice(-4), `Map error: ${msg}`]);
+        // Worker/Actor failures → canvas fallback so Command Center isn't blank
+        if (/sendCancelable|worker|Actor/i.test(msg) && mapRef.current) {
+          try {
+            map.remove();
+          } catch {
+            /* */
+          }
+          mapObj.current = null;
+          drawFallback(mapRef.current, stopsRef.current, routeRef.current, selected, hover);
+        }
+      });
+
+      const onReady = () => {
+        if (cancelled) return;
+        map.resize();
+        paint(map, stopsRef.current, routeRef.current, selected, hover);
+        fit(map, stopsRef.current);
+        setAgentLog((l) => [...l.slice(-4), "Mapbox tiles live ✓"]);
+      };
+      map.once("load", onReady);
+      // Extra resize after layout settles (flex hosts often start at 0)
+      requestAnimationFrame(() => {
+        if (!cancelled && mapObj.current) mapObj.current.resize();
+      });
+
+      return () => {
+        cancelled = true;
+        map.remove();
+        if (mapObj.current === map) mapObj.current = null;
+        markersRef.current = [];
+        if (mapRef.current) mapRef.current.replaceChildren();
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to start Mapbox";
+      setMapError(msg);
+      drawFallback(container, stopsRef.current, routeRef.current, selected, hover);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, token]);
@@ -425,9 +493,9 @@ export default function WayportMapOS({ tripId, tripTitle, destination, initialDa
   const dayTotal = stops.reduce((s, x) => s + (x.priceUsd ?? 0), 0);
 
   return (
-    <div className="relative h-[calc(100vh-0px)] min-h-[640px] w-full overflow-hidden rounded-none">
+    <div className="relative h-full min-h-[640px] w-full overflow-hidden rounded-none">
       {/* Map foundation */}
-      <div ref={mapRef} className="absolute inset-0 bg-[#140e0c]" />
+      <div ref={mapRef} className="absolute inset-0 z-0 h-full w-full bg-[#0c0806]" />
 
       {/* Top bar */}
       <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-4 p-4 md:p-5">
@@ -487,6 +555,9 @@ export default function WayportMapOS({ tripId, tripTitle, destination, initialDa
                         <Icon size={12} className="text-ember" />
                         <span className="truncate">{s.title}</span>
                       </span>
+                      {s.location ? (
+                        <span className="mt-0.5 block truncate text-[11px] text-text-secondary">{s.location}</span>
+                      ) : null}
                       <span className="mt-0.5 block text-[11px] text-text-tertiary">
                         {s.kind}
                         {s.priceUsd != null ? ` · ${formatCurrency(s.priceUsd)}` : ""}
@@ -527,6 +598,9 @@ export default function WayportMapOS({ tripId, tripTitle, destination, initialDa
           <div className="wp-map-panel flex-1 overflow-y-auto p-4">
             <div className="wp-eyebrow">{selectedStop.kind}</div>
             <h3 className="mt-1 font-display text-xl">{selectedStop.title}</h3>
+            {selectedStop.location ? (
+              <p className="mt-1 text-xs text-text-secondary">{selectedStop.location}</p>
+            ) : null}
             {selectedStop.priceUsd != null && (
               <div className="mt-2 text-ember">{formatCurrency(selectedStop.priceUsd)}</div>
             )}
@@ -578,10 +652,21 @@ export default function WayportMapOS({ tripId, tripTitle, destination, initialDa
             </button>
           </div>
         </div>
-        {!token && (
-          <p className="mt-2 text-center text-[10px] text-text-tertiary">
-            Add <code className="text-ember">NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN</code> for live Mapbox tiles · mock geo routing active
+        {mapError && (
+          <p className="mt-2 text-center text-[11px] text-red-400">
+            {mapError.includes("sk.")
+              ? "Use a public Mapbox token (pk.…), not a secret (sk.…)."
+              : mapError}
           </p>
+        )}
+        {!token && !mapError && (
+          <p className="mt-2 text-center text-[10px] text-text-tertiary">
+            Add a public <code className="text-ember">pk.…</code> token as{" "}
+            <code className="text-ember">NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN</code> · mock geo routing active
+          </p>
+        )}
+        {token && !mapError && (
+          <p className="mt-2 text-center text-[10px] text-text-tertiary">Mapbox live · public token</p>
         )}
       </div>
     </div>

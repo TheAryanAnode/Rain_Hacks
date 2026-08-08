@@ -54,7 +54,7 @@ export class PlannerAgent extends BaseAgent {
       const { object } = await generateObject({
         model,
         schema: PlanSchema,
-        prompt: `Turn this travel request into a concrete day-by-day itinerary. Keep it realistic, budget-aware, and traveler-aware.\n\nRequest: ${text}\n\nTraveler DNA: ${JSON.stringify(dna ?? {})}\n\nRules: no overlapping items, first activity at least 2 hours after flight arrival, respect relaxation preference, prioritize food when food priority is high. Each item must have a dayOffset (0-indexed). For every item include: priceUsd (realistic USD), description (1-2 sentences), and whatToDo (2-4 short actionable tips for that stop).`,
+        prompt: `Turn this travel request into a concrete day-by-day itinerary. Keep it realistic, budget-aware, and traveler-aware.\n\nRequest: ${text}\n\nTraveler DNA: ${JSON.stringify(dna ?? {})}\n\nRules: no overlapping items, first activity at least 2 hours after flight arrival, respect relaxation preference, prioritize food when food priority is high. Each item must have a dayOffset (0-indexed). For every item include: location (a real, geocodeable place name like "Fushimi Inari Taisha, Kyoto" or "Pontocho Alley, Kyoto" — never vague labels like "downtown" alone), priceUsd (realistic USD), description (1-2 sentences), and whatToDo (2-4 short actionable tips for that stop). Titles should name the place when possible so the map can pin the same spot.`,
       });
       plan = object;
       // Ensure every item has pricing / tips
@@ -113,6 +113,8 @@ export class PlannerAgent extends BaseAgent {
 
     if (!this.ctx.tripId) return { plan, tripId: null, risk };
 
+    const { resolveItemCoords } = await import("../mapbox/geocoding");
+
     if (useMemoryGraph()) {
       const trip = demoStore.getTrip(this.ctx.userId, this.ctx.tripId);
       if (!trip) throw new Error("Trip not found");
@@ -126,18 +128,25 @@ export class PlannerAgent extends BaseAgent {
         const minute = Math.round(((item.startHour ?? 10) % 1) * 60);
         start.setHours(hour, minute, 0, 0);
         const end = new Date(start.getTime() + (item.durationMinutes ?? 60) * 60_000);
+        const coords = await resolveItemCoords(
+          { kind: item.kind, title: item.title, location: item.location },
+          plan.destination,
+        );
         demoStore.addItem(this.ctx.tripId, {
           kind: kindToDb(item.kind),
           title: item.title,
           status: "TENTATIVE",
           startTime: start,
           endTime: end,
-          location: item.location,
+          location: item.location || coords.geocodedName,
           payload: {
             notes: item.notes,
             priceUsd: item.priceUsd,
             description: item.description,
             whatToDo: item.whatToDo,
+            lat: coords.lat,
+            lng: coords.lng,
+            geocodedName: coords.geocodedName,
             risk: item.kind === "RESTAURANT" && item.dayOffset === 0 ? risk : undefined,
           },
         });
@@ -169,6 +178,10 @@ export class PlannerAgent extends BaseAgent {
       const minute = Math.round(((item.startHour ?? 10) % 1) * 60);
       start.setHours(hour, minute, 0, 0);
       const end = new Date(start.getTime() + (item.durationMinutes ?? 60) * 60_000);
+      const coords = await resolveItemCoords(
+        { kind: item.kind, title: item.title, location: item.location },
+        plan.destination,
+      );
       await prisma.tripItem.create({
         data: {
           tripId: this.ctx.tripId,
@@ -177,12 +190,15 @@ export class PlannerAgent extends BaseAgent {
           status: "TENTATIVE",
           startTime: start,
           endTime: end,
-          location: item.location,
+          location: item.location || coords.geocodedName,
           payload: {
             notes: item.notes,
             priceUsd: item.priceUsd,
             description: item.description,
             whatToDo: item.whatToDo,
+            lat: coords.lat,
+            lng: coords.lng,
+            geocodedName: coords.geocodedName,
             risk: item.kind === "RESTAURANT" && item.dayOffset === 0 ? risk : undefined,
           },
         },
@@ -200,23 +216,159 @@ export class PlannerAgent extends BaseAgent {
 }
 
 function skeletonItinerary(destination: string, days: number): z.infer<typeof ItineraryItemSchema>[] {
+  const dest = destination.trim() || "Kyoto";
+  const city = dest.split(",")[0]?.trim() || dest;
+  const anchors = skeletonAnchors(city);
   const items: z.infer<typeof ItineraryItemSchema>[] = [];
   for (let d = 0; d < Math.min(days, 7); d++) {
     if (d === 0) {
-      items.push({ kind: "FLIGHT", title: `Flight to ${destination}`, dayOffset: 0, startHour: 9, durationMinutes: 240 });
-      items.push({ kind: "TRANSFER", title: "Airport → Hotel", dayOffset: 0, startHour: 14, durationMinutes: 45 });
-      items.push({ kind: "HOTEL", title: "Check in", dayOffset: 0, startHour: 15, durationMinutes: 30 });
-      items.push({ kind: "RESTAURANT", title: "Dinner — neighborhood spot", dayOffset: 0, startHour: 19, durationMinutes: 90 });
+      items.push({
+        kind: "FLIGHT",
+        title: `Flight to ${city}`,
+        dayOffset: 0,
+        startHour: 9,
+        durationMinutes: 240,
+        location: anchors.airport,
+      });
+      items.push({
+        kind: "TRANSFER",
+        title: "Airport → Hotel",
+        dayOffset: 0,
+        startHour: 14,
+        durationMinutes: 45,
+        location: anchors.hotel,
+      });
+      items.push({
+        kind: "HOTEL",
+        title: `Check in — ${anchors.hotelName}`,
+        dayOffset: 0,
+        startHour: 15,
+        durationMinutes: 30,
+        location: anchors.hotel,
+      });
+      items.push({
+        kind: "RESTAURANT",
+        title: anchors.dinner0.title,
+        dayOffset: 0,
+        startHour: 19,
+        durationMinutes: 90,
+        location: anchors.dinner0.location,
+      });
     } else if (d === days - 1) {
-      items.push({ kind: "HOTEL", title: "Check out", dayOffset: d, startHour: 10, durationMinutes: 30 });
-      items.push({ kind: "TRANSFER", title: "Hotel → Airport", dayOffset: d, startHour: 11, durationMinutes: 45 });
-      items.push({ kind: "FLIGHT", title: `Return flight`, dayOffset: d, startHour: 13, durationMinutes: 240 });
+      items.push({
+        kind: "HOTEL",
+        title: "Check out",
+        dayOffset: d,
+        startHour: 10,
+        durationMinutes: 30,
+        location: anchors.hotel,
+      });
+      items.push({
+        kind: "TRANSFER",
+        title: "Hotel → Airport",
+        dayOffset: d,
+        startHour: 11,
+        durationMinutes: 45,
+        location: anchors.airport,
+      });
+      items.push({
+        kind: "FLIGHT",
+        title: `Return flight from ${city}`,
+        dayOffset: d,
+        startHour: 13,
+        durationMinutes: 240,
+        location: anchors.airport,
+      });
     } else {
-      items.push({ kind: "ACTIVITY", title: "Morning anchor experience", dayOffset: d, startHour: 10, durationMinutes: 120 });
-      items.push({ kind: "RESTAURANT", title: "Lunch", dayOffset: d, startHour: 12, durationMinutes: 60 });
-      items.push({ kind: "ACTIVITY", title: "Afternoon exploration", dayOffset: d, startHour: 14, durationMinutes: 150 });
-      items.push({ kind: "RESTAURANT", title: "Dinner", dayOffset: d, startHour: 19, durationMinutes: 90 });
+      const day = anchors.days[(d - 1) % anchors.days.length]!;
+      items.push({
+        kind: "ACTIVITY",
+        title: day.morning.title,
+        dayOffset: d,
+        startHour: 10,
+        durationMinutes: 120,
+        location: day.morning.location,
+      });
+      items.push({
+        kind: "RESTAURANT",
+        title: day.lunch.title,
+        dayOffset: d,
+        startHour: 12,
+        durationMinutes: 60,
+        location: day.lunch.location,
+      });
+      items.push({
+        kind: "ACTIVITY",
+        title: day.afternoon.title,
+        dayOffset: d,
+        startHour: 14,
+        durationMinutes: 150,
+        location: day.afternoon.location,
+      });
+      items.push({
+        kind: "RESTAURANT",
+        title: day.dinner.title,
+        dayOffset: d,
+        startHour: 19,
+        durationMinutes: 90,
+        location: day.dinner.location,
+      });
     }
   }
   return items;
+}
+
+type PlaceRef = { title: string; location: string };
+
+function skeletonAnchors(city: string) {
+  const key = city.toLowerCase();
+  if (key.includes("kyoto")) {
+    return {
+      airport: "Kansai International Airport, Osaka",
+      hotel: "Gion, Kyoto",
+      hotelName: "Gion ryokan",
+      dinner0: { title: "Dinner in Pontocho", location: "Pontocho Alley, Kyoto" } satisfies PlaceRef,
+      days: [
+        {
+          morning: { title: "Fushimi Inari shrine walk", location: "Fushimi Inari Taisha, Kyoto" },
+          lunch: { title: "Lunch near Inari", location: "Fushimi Inari Taisha, Kyoto" },
+          afternoon: { title: "Gion district stroll", location: "Gion, Kyoto" },
+          dinner: { title: "Kaiseki in Gion", location: "Gion, Kyoto" },
+        },
+        {
+          morning: { title: "Arashiyama bamboo grove", location: "Arashiyama Bamboo Grove, Kyoto" },
+          lunch: { title: "Tofu lunch in Arashiyama", location: "Arashiyama, Kyoto" },
+          afternoon: { title: "Kinkaku-ji golden pavilion", location: "Kinkaku-ji, Kyoto" },
+          dinner: { title: "Dinner in Nishiki market area", location: "Nishiki Market, Kyoto" },
+        },
+        {
+          morning: { title: "Philosopher's Path", location: "Philosopher's Path, Kyoto" },
+          lunch: { title: "Lunch in Higashiyama", location: "Higashiyama, Kyoto" },
+          afternoon: { title: "Kiyomizu-dera temple", location: "Kiyomizu-dera, Kyoto" },
+          dinner: { title: "Dinner along the Kamo River", location: "Kamo River, Kyoto" },
+        },
+      ],
+    };
+  }
+  // Generic but geocodeable: pin each stop to a named place in the destination city.
+  return {
+    airport: `${city} International Airport`,
+    hotel: `${city} city center hotel`,
+    hotelName: `${city} hotel`,
+    dinner0: { title: `Dinner near ${city} center`, location: `${city} downtown` } satisfies PlaceRef,
+    days: [
+      {
+        morning: { title: `${city} landmark morning`, location: `${city} historic center` },
+        lunch: { title: `Lunch in ${city}`, location: `${city} downtown` },
+        afternoon: { title: `${city} neighborhood walk`, location: `${city} old town` },
+        dinner: { title: `Dinner in ${city}`, location: `${city} restaurant district` },
+      },
+      {
+        morning: { title: `${city} museum visit`, location: `${city} museum` },
+        lunch: { title: `Market lunch`, location: `${city} market` },
+        afternoon: { title: `${city} viewpoint`, location: `${city} viewpoint` },
+        dinner: { title: `Neighborhood dinner`, location: `${city} nightlife district` },
+      },
+    ],
+  };
 }

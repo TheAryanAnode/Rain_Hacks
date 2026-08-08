@@ -27,7 +27,10 @@ export async function POST(req: Request) {
       stops: dayStops,
       allStops: stops,
       route,
-      mapboxToken: process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || null,
+      mapboxToken:
+        [process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN, process.env.MAPBOX_ACCESS_TOKEN].find((t) =>
+          t?.startsWith("pk."),
+        ) || null,
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Error";
@@ -50,6 +53,11 @@ export async function GET(req: Request) {
   const dayStops = stops.filter((s) => s.dayOffset === dayOffset);
   const route = await buildDayRoute(tripId, dayOffset, dayStops, mode);
 
+  const pub = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || "";
+  const srv = process.env.MAPBOX_ACCESS_TOKEN || "";
+  // Mapbox GL JS only accepts public tokens (pk.*) — never send sk.* to the browser
+  const mapboxToken = [pub, srv].find((t) => t.startsWith("pk.")) || null;
+
   return NextResponse.json({
     ok: true,
     trip: {
@@ -63,6 +71,6 @@ export async function GET(req: Request) {
     stops: dayStops,
     allStops: stops,
     route,
-    mapboxToken: process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || null,
+    mapboxToken,
   });
 }
