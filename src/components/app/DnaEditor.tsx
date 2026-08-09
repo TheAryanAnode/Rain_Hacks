@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
 const SECTIONS = [
@@ -80,13 +80,29 @@ function inferDnaFromPhrase(phrase: string, current: Record<string, any>) {
   return { dna: next, touched };
 }
 
-export default function DnaEditor({ initial }: { initial: Record<string, any> }) {
+export default function DnaEditor({
+  initial,
+  travelerId,
+  subjectName,
+}: {
+  initial: Record<string, any>;
+  /** When set, saves to that traveler's DNA instead of the signed-in user profile. */
+  travelerId?: string;
+  subjectName?: string;
+}) {
   const [dna, setDna] = useState(initial);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [phrase, setPhrase] = useState("");
   const [inferNote, setInferNote] = useState<string | null>(null);
   const [highlight, setHighlight] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setDna(initial);
+    setSaved(false);
+    setInferNote(null);
+    setHighlight(new Set());
+  }, [initial, travelerId]);
 
   function getVal(section: string, field: string) {
     return Number(dna?.[section]?.[field] ?? 5);
@@ -115,26 +131,34 @@ export default function DnaEditor({ initial }: { initial: Record<string, any> })
 
   async function save() {
     setSaving(true);
-    await fetch("/api/profile", {
+    const url = travelerId
+      ? `/api/travelers/${encodeURIComponent(travelerId)}/dna`
+      : "/api/profile";
+    const body = travelerId ? { dna } : { dna };
+    await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dna }),
+      body: JSON.stringify(body),
     });
     setSaving(false);
     setSaved(true);
   }
 
+  const whose = subjectName ? `${subjectName}'s` : "your";
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <p className="max-w-xl text-text-secondary">WAYPORT uses this to tailor every Orchestrator decision.</p>
+        <p className="max-w-xl text-text-secondary">
+          WAYPORT uses {whose} Travel DNA to tailor Orchestrator decisions for this person.
+        </p>
         <button onClick={save} disabled={saving} className="wp-cta px-5 py-2.5 text-sm">
           {saving ? "Saving…" : saved ? "Saved" : "Save DNA"}
         </button>
       </div>
 
       <section className="wp-card rounded-2xl p-6">
-        <div className="wp-eyebrow">Describe yourself</div>
+        <div className="wp-eyebrow">Describe {subjectName ? subjectName.split(" ")[0] : "yourself"}</div>
         <p className="mt-2 text-sm text-text-secondary">
           Paste a vibe in plain English — we only move the sliders we can infer.
         </p>

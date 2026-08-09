@@ -80,13 +80,21 @@ export default async function TripPage({
             </div>
           </div>
 
-          <div className="wp-avatar-stack">
-            {party.slice(0, 6).map((a) => (
-              <span key={a.id} className="wp-avatar" title={a.name}>
-                {initials(a.name)}
-              </span>
-            ))}
-            {party.length > 6 && <span className="wp-avatar">+{party.length - 6}</span>}
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <div className="wp-avatar-stack">
+              {party.slice(0, 6).map((a) => (
+                <span key={a.id} className="wp-avatar" title={a.name}>
+                  {initials(a.name)}
+                </span>
+              ))}
+              {party.length > 6 && <span className="wp-avatar">+{party.length - 6}</span>}
+            </div>
+            <Link
+              href={`/app?tripId=${encodeURIComponent(stored.id)}`}
+              className="wp-cta inline-flex items-center gap-2 px-4 py-2 text-sm"
+            >
+              <MapPin size={14} /> Open Map OS
+            </Link>
           </div>
         </div>
       </header>

@@ -31,8 +31,12 @@ export class TravelGraph {
 
   async getTrip(query: { tripId: string }): Promise<TripWithGraph | null> {
     if (isMemoryGraph()) {
-      const t = demoStore.getTrip(this.userId, query.tripId);
-      return t as unknown as TripWithGraph | null;
+      // Prefer ownership check, but still resolve by id so Map OS / routing can
+      // open any in-memory trip the UI lists (demo seeds + newly created).
+      const owned = demoStore.getTrip(this.userId, query.tripId);
+      if (owned) return owned as unknown as TripWithGraph;
+      const any = demoStore.getTripById(query.tripId);
+      return (any as unknown as TripWithGraph) ?? null;
     }
     const t = await prisma.trip.findFirst({
       where: { id: query.tripId, userId: this.userId },

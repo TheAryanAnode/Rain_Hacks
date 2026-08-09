@@ -359,6 +359,64 @@ export function attendeeCost(a: Attendee): AttendeeCost {
   return { airfareUsd: airfare, lodgingUsd: lodging, totalUsd: airfare + lodging };
 }
 
+/**
+ * Projected cost for one traveler — live quote when present, otherwise a
+ * route/room estimate so spend is visible before everyone RSVPs or fares land.
+ */
+export function projectedAttendeeCost(
+  a: Attendee,
+  p: Program,
+): AttendeeCost & { estimated: boolean } {
+  const live = attendeeCost(a);
+  if (live.totalUsd > 0) return { ...live, estimated: false };
+
+  const nights =
+    a.nights ??
+    Math.max(
+      1,
+      Math.round(
+        (p.endDate.getTime() - p.startDate.getTime()) / (24 * 60 * 60 * 1000),
+      ),
+    );
+  const blockRate =
+    p.roomBlocks.find((b) => b.id === a.roomBlockId)?.nightlyRateUsd ??
+    p.roomBlocks.find((b) => typeof b.nightlyRateUsd === "number")?.nightlyRateUsd;
+  const nightly = a.nightlyRateUsd ?? blockRate ?? 260;
+  const lodgingUsd = nightly * nights;
+
+  const hasFlights = Boolean(a.inbound || a.outbound);
+  const airfareUsd = hasFlights || a.rsvp !== "DECLINED"
+    ? estimateAirfareUsd(a.originAirport, p.arrivalAirport)
+    : 0;
+
+  return {
+    airfareUsd,
+    lodgingUsd,
+    totalUsd: airfareUsd + lodgingUsd,
+    estimated: true,
+  };
+}
+
+/** Rough RT economy by haul — good enough for a projected-spend meter. */
+function estimateAirfareUsd(origin: string, arrival: string): number {
+  const o = origin.toUpperCase();
+  const d = (arrival || "").toUpperCase();
+  const sameRegion =
+    (EU.has(o) && EU.has(d)) ||
+    (US.has(o) && US.has(d)) ||
+    (ASIA.has(o) && ASIA.has(d));
+  if (sameRegion) return 320;
+  if ((US.has(o) && EU.has(d)) || (EU.has(o) && US.has(d))) return 980;
+  if ((ASIA.has(o) && (US.has(d) || EU.has(d))) || ((US.has(o) || EU.has(o)) && ASIA.has(d))) {
+    return 1200;
+  }
+  return 750;
+}
+
+const US = new Set(["SFO", "JFK", "EWR", "LAX", "ORD", "SEA", "BOS", "DEN", "ATL", "DFW", "IAD", "MIA", "IAH"]);
+const EU = new Set(["LHR", "CDG", "AMS", "FRA", "MUC", "BER", "LIS", "BCN", "MAD", "DUB", "ZRH", "FCO", "MXP"]);
+const ASIA = new Set(["HND", "NRT", "KIX", "ICN", "SIN", "BKK", "HKG", "BLR", "BOM", "DEL", "DXB"]);
+
 export interface ProgramCost {
   /** Already booked — real money out the door. */
   committedUsd: number;
@@ -371,19 +429,25 @@ export interface ProgramCost {
   utilization: number;
   perAttendeeUsd: number;
   /**
-   * True when no travel on this trip carries a price yet. The UI must say
-   * "not quoted" rather than "$0" — a proposal with no fares is not a free trip.
+   * True when every line item is an estimate (no live fares yet). The UI still
+   * shows the dollar figure — it just labels it as projected/estimated.
    */
+  estimated: boolean;
+  /** @deprecated use `estimated` — kept so older call sites keep compiling. */
   unpriced: boolean;
 }
 
 export function programCost(p: Program): ProgramCost {
   let committed = 0;
   let pipeline = 0;
+  let anyLive = false;
+  // Project for everyone still on the roster — RSVP response rate must not
+  // zero out the spend meter.
   const coming = p.attendees.filter((a) => a.rsvp !== "DECLINED");
 
   for (const a of coming) {
-    const { totalUsd } = attendeeCost(a);
+    const { totalUsd, estimated } = projectedAttendeeCost(a, p);
+    if (!estimated) anyLive = true;
     if (a.travelStatus === "BOOKED") committed += totalUsd;
     else pipeline += totalUsd;
   }
@@ -397,7 +461,8 @@ export function programCost(p: Program): ProgramCost {
     varianceUsd: p.budgetUsd - projected,
     utilization: p.budgetUsd > 0 ? projected / p.budgetUsd : 0,
     perAttendeeUsd: coming.length ? Math.round(projected / coming.length) : 0,
-    unpriced: coming.length > 0 && projected === 0,
+    estimated: coming.length > 0 && !anyLive,
+    unpriced: coming.length > 0 && !anyLive,
   };
 }
 
@@ -575,7 +640,7 @@ export function programBlockers(p: Program, now = new Date()): Blocker[] {
       id: "rsvp",
       severity: rsvp.awaiting > rsvp.total / 3 ? "warn" : "info",
       title: `${rsvp.awaiting} ${rsvp.awaiting === 1 ? "person has" : "people have"} not responded`,
-      detail: "Travel can't be priced until they confirm",
+      detail: "Projected spend still includes them — confirm to lock rooms and fares",
       anchor: "#roster",
     });
   }

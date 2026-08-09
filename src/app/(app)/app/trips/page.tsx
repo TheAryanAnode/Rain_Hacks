@@ -93,102 +93,113 @@ export default async function TripsPage() {
               coord?.approvals.filter((a) => a.status === "PENDING").length ?? 0;
 
             return (
-              <Link
-                key={t.id}
-                href={`/app/trips/${t.id}`}
-                className="wp-card wp-card-interactive block p-6"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      {coord ? (
-                        <span className="wp-badge wp-badge-accent">
-                          {PURPOSE_LABEL[coord.purpose]}
+              <div key={t.id} className="wp-card wp-card-interactive p-6">
+                <Link href={`/app/trips/${t.id}`} className="block">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {coord ? (
+                          <span className="wp-badge wp-badge-accent">
+                            {PURPOSE_LABEL[coord.purpose]}
+                          </span>
+                        ) : (
+                          <span className="wp-badge wp-badge-neutral">Solo</span>
+                        )}
+                        {coord?.costCenter && (
+                          <span className="wp-badge wp-badge-neutral">{coord.costCenter}</span>
+                        )}
+                      </div>
+                      <h2 className="font-display mt-2.5 truncate text-xl font-semibold">
+                        {t.title}
+                      </h2>
+                      <p className="mt-1 text-sm text-text-tertiary">
+                        {range(t.startDate, t.endDate)}
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-tertiary">
+                        <span className="inline-flex items-center gap-1">
+                          <MapPin size={11} /> {t.destination}
                         </span>
-                      ) : (
-                        <span className="wp-badge wp-badge-neutral">Solo</span>
+                        <span className="inline-flex items-center gap-1">
+                          <PlaneTakeoff size={11} /> {t.origin ?? "Origin not set"}
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <Users size={11} /> {party.length || 1}{" "}
+                          {(party.length || 1) === 1 ? "traveler" : "travelers"}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-1.5">
+                      <span className={`wp-badge ${STATUS_TONE[t.status] ?? "wp-badge-neutral"}`}>
+                        {t.status}
+                      </span>
+                      {alerts > 0 && (
+                        <span className="wp-badge wp-badge-warn">{alerts} alert{alerts === 1 ? "" : "s"}</span>
                       )}
-                      {coord?.costCenter && (
-                        <span className="wp-badge wp-badge-neutral">{coord.costCenter}</span>
+                      {pendingApprovals > 0 && (
+                        <span className="wp-badge wp-badge-err">
+                          {pendingApprovals} approval{pendingApprovals === 1 ? "" : "s"}
+                        </span>
                       )}
                     </div>
-                    <h2 className="font-display mt-2.5 truncate text-xl font-semibold">
-                      {t.title}
-                    </h2>
-                    <p className="mt-1 text-sm text-text-tertiary">
-                      {range(t.startDate, t.endDate)}
-                    </p>
-                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-tertiary">
-                      <span className="inline-flex items-center gap-1">
-                        <MapPin size={11} /> {t.destination}
-                      </span>
-                      <span className="inline-flex items-center gap-1">
-                        <PlaneTakeoff size={11} /> {t.origin ?? "Origin not set"}
-                      </span>
-                      <span className="inline-flex items-center gap-1">
-                        <Users size={11} /> {party.length || 1}{" "}
-                        {(party.length || 1) === 1 ? "traveler" : "travelers"}
-                      </span>
-                    </div>
                   </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1.5">
-                    <span className={`wp-badge ${STATUS_TONE[t.status] ?? "wp-badge-neutral"}`}>
-                      {t.status}
-                    </span>
-                    {alerts > 0 && (
-                      <span className="wp-badge wp-badge-warn">{alerts} alert{alerts === 1 ? "" : "s"}</span>
-                    )}
-                    {pendingApprovals > 0 && (
-                      <span className="wp-badge wp-badge-err">
-                        {pendingApprovals} approval{pendingApprovals === 1 ? "" : "s"}
-                      </span>
-                    )}
-                  </div>
-                </div>
 
-                {total > 0 && (
-                  <div className="mt-5">
-                    <div className="flex items-baseline justify-between text-xs">
-                      <span className="text-text-tertiary">
-                        {formatCurrency(actual)} of {formatCurrency(total)}
-                      </span>
-                      <span className="tabular-nums text-text-tertiary">{pct}%</span>
-                    </div>
-                    <div className="wp-progress mt-1.5">
-                      <div
-                        className="wp-progress-fill"
-                        data-tone={pct > 95 ? "err" : pct > 80 ? "warn" : "ok"}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <div className="mt-5 flex items-center justify-between gap-4 border-t border-white/8 pt-4 text-xs text-text-tertiary">
-                  <div className="flex items-center gap-4">
-                    <span>{t._count?.items ?? t.items?.length ?? 0} items</span>
-                    {budget && <span>{formatCurrency(Number(budget.remaining))} left</span>}
-                  </div>
-                  {party.length > 0 && (
-                    <div className="wp-avatar-stack">
-                      {party.slice(0, 5).map((a) => (
-                        <span
-                          key={a.id}
-                          className="wp-avatar !h-7 !w-7 !text-[10px]"
-                          title={a.name}
-                        >
-                          {initials(a.name)}
+                  {total > 0 && (
+                    <div className="mt-5">
+                      <div className="flex items-baseline justify-between text-xs">
+                        <span className="text-text-tertiary">
+                          {formatCurrency(actual)} of {formatCurrency(total)}
                         </span>
-                      ))}
-                      {party.length > 5 && (
-                        <span className="wp-avatar !h-7 !w-7 !text-[10px]">
-                          +{party.length - 5}
-                        </span>
-                      )}
+                        <span className="tabular-nums text-text-tertiary">{pct}%</span>
+                      </div>
+                      <div className="wp-progress mt-1.5">
+                        <div
+                          className="wp-progress-fill"
+                          data-tone={pct > 95 ? "err" : pct > 80 ? "warn" : "ok"}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
                     </div>
                   )}
+
+                  <div className="mt-5 flex items-center justify-between gap-4 border-t border-white/8 pt-4 text-xs text-text-tertiary">
+                    <div className="flex items-center gap-4">
+                      <span>{t._count?.items ?? t.items?.length ?? 0} items</span>
+                      {budget && <span>{formatCurrency(Number(budget.remaining))} left</span>}
+                    </div>
+                    {party.length > 0 && (
+                      <div className="wp-avatar-stack">
+                        {party.slice(0, 5).map((a) => (
+                          <span
+                            key={a.id}
+                            className="wp-avatar !h-7 !w-7 !text-[10px]"
+                            title={a.name}
+                          >
+                            {initials(a.name)}
+                          </span>
+                        ))}
+                        {party.length > 5 && (
+                          <span className="wp-avatar !h-7 !w-7 !text-[10px]">
+                            +{party.length - 5}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </Link>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Link
+                    href={`/app?tripId=${encodeURIComponent(t.id)}`}
+                    className="wp-btn-sm inline-flex items-center gap-1.5"
+                    data-tone="accent"
+                  >
+                    <MapPin size={13} /> Open Map OS
+                  </Link>
+                  <Link href={`/app/trips/${t.id}`} className="wp-btn-sm inline-flex">
+                    Trip detail
+                  </Link>
                 </div>
-              </Link>
+              </div>
             );
           })}
         </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import type { Route, TripStop } from "@/lib/mapbox/types";
@@ -22,6 +23,7 @@ const KIND_ICON: Record<string, typeof Plane> = {
   EXPERIENCE: Landmark,
   TRANSFER: Car,
   TRANSIT: Car,
+  EVENT: Landmark,
 };
 
 type Props = {
@@ -30,7 +32,7 @@ type Props = {
   destination: string;
   initialDay?: number;
   /** All trips, for the switcher. Omitted or single-entry hides it. */
-  trips?: { id: string; title: string }[];
+  trips?: { id: string; title: string; destination?: string }[];
 };
 
 export default function WayportMapOS({
@@ -40,11 +42,14 @@ export default function WayportMapOS({
   initialDay = 0,
   trips,
 }: Props) {
+  const router = useRouter();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapObj = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const stopsRef = useRef<TripStop[]>([]);
   const routeRef = useRef<Route | null>(null);
+  /** Bumps whenever tripId changes so in-flight fetches for the old trip are ignored. */
+  const tripGen = useRef(0);
 
   const [day, setDay] = useState(initialDay);
   const [days, setDays] = useState<number[]>([0]);
@@ -59,6 +64,8 @@ export default function WayportMapOS({
   const [token, setToken] = useState<string | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [activeTitle, setActiveTitle] = useState(tripTitle);
+  const [activeDestination, setActiveDestination] = useState(destination);
   const prevGeomRef = useRef<GeoJSON.LineString | null>(null);
 
   stopsRef.current = stops;
@@ -75,24 +82,73 @@ export default function WayportMapOS({
   const tokenRef = useRef<string | null>(null);
   tokenRef.current = token;
 
-  async function load(dayOffset = day, transport = mode) {
-    const res = await fetch(`/api/routing?tripId=${tripId}&dayOffset=${dayOffset}&mode=${transport}`);
+  /** Last day/mode/trip fetch key — avoids duplicate routing requests. */
+  const loadedKey = useRef<string | null>(null);
+
+  async function load(forTripId: string, dayOffset: number, transport: "walking" | "driving", gen: number) {
+    const res = await fetch(
+      `/api/routing?tripId=${encodeURIComponent(forTripId)}&dayOffset=${dayOffset}&mode=${transport}`,
+    );
     const data = await res.json();
-    if (!res.ok) return;
+    if (gen !== tripGen.current) return null; // stale response from a previous trip
+    if (!res.ok) {
+      setAgentLog((l) => [...l.slice(-4), `Routing failed: ${data.error ?? res.status}`]);
+      return null;
+    }
     setStops(data.stops ?? []);
     setAllStops(data.allStops ?? []);
     setRoute(data.route);
     setDays(data.days?.length ? data.days : [0]);
-    // Mapbox GL JS requires a public token (pk.*) — ignore sk.* if somehow returned
-    const t = typeof data.mapboxToken === "string" && data.mapboxToken.startsWith("pk.") ? data.mapboxToken : null;
+    if (data.trip?.title) setActiveTitle(data.trip.title);
+    if (data.trip?.destination) setActiveDestination(data.trip.destination);
+    const t =
+      typeof data.mapboxToken === "string" && data.mapboxToken.startsWith("pk.")
+        ? data.mapboxToken
+        : null;
     tokenRef.current = t;
     setToken(t);
-    setAgentLog((l) => [...l.slice(-4), `Routed day ${dayOffset + 1} · ${data.route ? formatDuration(data.route.durationSeconds) : "single stop"}`]);
+    setAgentLog((l) => [
+      ...l.slice(-4),
+      `Loaded ${data.trip?.destination ?? forTripId} · day ${dayOffset + 1} · ${
+        data.route ? formatDuration(data.route.durationSeconds) : `${(data.stops ?? []).length} stops`
+      }`,
+    ]);
     return data;
   }
 
+  // Full reset + fetch whenever the selected trip changes.
   useEffect(() => {
-    load(day, mode).then(() => setReady(true));
+    const gen = ++tripGen.current;
+    setDay(0);
+    setMode("walking");
+    setSelected(null);
+    setHover(null);
+    setStops([]);
+    setAllStops([]);
+    setRoute(null);
+    setDays([0]);
+    setReady(false);
+    setMapError(null);
+    setActiveTitle(tripTitle);
+    setActiveDestination(destination);
+    setAgentLog([`Switching to ${tripTitle}…`, "Routing day stops…"]);
+    loadedKey.current = `0|walking|${tripId}`;
+
+    load(tripId, 0, "walking", gen).then((data) => {
+      if (gen !== tripGen.current) return;
+      setReady(true);
+      const map = mapObj.current;
+      if (map && data) {
+        const apply = () => {
+          paint(map, data.stops ?? [], data.route, null, null);
+          fit(map, data.stops ?? []);
+        };
+        if (map.isStyleLoaded()) apply();
+        else map.once("load", apply);
+      } else if (!tokenRef.current && mapRef.current && data) {
+        drawFallback(mapRef.current, data.stops ?? [], data.route, null, null);
+      }
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripId]);
 
@@ -108,7 +164,6 @@ export default function WayportMapOS({
     let cancelled = false;
     const container = mapRef.current;
 
-    // Tear down any prior instance (Strict Mode remount / token change)
     if (mapObj.current) {
       mapObj.current.remove();
       mapObj.current = null;
@@ -125,12 +180,11 @@ export default function WayportMapOS({
 
     try {
       mapboxgl.accessToken = token;
+      const centerStop = stopsRef.current[0];
       const map = new mapboxgl.Map({
         container,
         style: "mapbox://styles/mapbox/dark-v11",
-        center: stopsRef.current[0]
-          ? [stopsRef.current[0].lng, stopsRef.current[0].lat]
-          : [135.7681, 35.0116],
+        center: centerStop ? [centerStop.lng, centerStop.lat] : [135.7681, 35.0116],
         zoom: 12.2,
         pitch: 48,
         bearing: -18,
@@ -144,7 +198,6 @@ export default function WayportMapOS({
         if (cancelled) return;
         setMapError(msg);
         setAgentLog((l) => [...l.slice(-4), `Map error: ${msg}`]);
-        // Worker/Actor failures → canvas fallback so Command Center isn't blank
         if (/sendCancelable|worker|Actor/i.test(msg) && mapRef.current) {
           try {
             map.remove();
@@ -164,7 +217,6 @@ export default function WayportMapOS({
         setAgentLog((l) => [...l.slice(-4), "Mapbox tiles live ✓"]);
       };
       map.once("load", onReady);
-      // Extra resize after layout settles (flex hosts often start at 0)
       requestAnimationFrame(() => {
         if (!cancelled && mapObj.current) mapObj.current.resize();
       });
@@ -182,26 +234,18 @@ export default function WayportMapOS({
       drawFallback(container, stopsRef.current, routeRef.current, selected, hover);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, token]);
-
-  /**
-   * Last day/mode actually fetched. Guards against duplicate requests: the
-   * [tripId] effect already loads day 0, and React Strict Mode re-runs every
-   * effect on mount, so a naive "skip first run" flag still fired a third
-   * fetch. Comparing the key is idempotent however many times effects run.
-   */
-  const loadedKey = useRef<string | null>(`${initialDay}|walking`);
+  }, [ready, token, tripId]);
 
   useEffect(() => {
-    const key = `${day}|${mode}`;
+    const key = `${day}|${mode}|${tripId}`;
     if (loadedKey.current === key) return;
     loadedKey.current = key;
 
-    load(day, mode).then((data) => {
-      if (!data) return;
+    const gen = tripGen.current;
+    load(tripId, day, mode, gen).then((data) => {
+      if (!data || gen !== tripGen.current) return;
       const map = mapObj.current;
       if (map) {
-        // The style may still be loading when a fast response lands.
         const apply = () => {
           paint(map, data.stops, data.route, selected, hover, true);
           fit(map, data.stops);
@@ -598,7 +642,7 @@ export default function WayportMapOS({
       }),
     }).catch(() => {});
     setAgentLog((l) => [...l, "3 constraints satisfied", "Old route fading… new route drawing in…"]);
-    const data = await load(day, mode);
+    const data = await load(tripId, day, mode, tripGen.current);
     const map = mapObj.current;
     if (map && map.isStyleLoaded() && data) {
       paint(map, data.stops, data.route, selected, hover, true);
@@ -622,8 +666,8 @@ export default function WayportMapOS({
       <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-4 p-4 md:p-5">
         <div className="pointer-events-auto wp-map-panel max-w-md px-4 py-3">
           <div className="font-display text-xs tracking-[0.28em]">WAYPORT</div>
-          <div className="mt-1 text-lg font-semibold leading-tight">{tripTitle}</div>
-          <div className="text-xs text-text-tertiary">{destination}</div>
+          <div className="mt-1 text-lg font-semibold leading-tight">{activeTitle}</div>
+          <div className="text-xs text-text-tertiary">{activeDestination}</div>
 
           {/* Every trip's map is reachable, not just whichever sorts first. */}
           {trips && trips.length > 1 && (
@@ -632,12 +676,16 @@ export default function WayportMapOS({
               className="wp-select mt-2.5 !py-1.5 !text-xs"
               value={tripId}
               onChange={(e) => {
-                window.location.href = `/app?tripId=${encodeURIComponent(e.target.value)}`;
+                const next = e.target.value;
+                if (next && next !== tripId) {
+                  router.push(`/app?tripId=${encodeURIComponent(next)}`);
+                }
               }}
             >
               {trips.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.title}
+                  {t.destination ? ` · ${t.destination}` : ""}
                 </option>
               ))}
             </select>
