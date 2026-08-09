@@ -404,6 +404,19 @@ export function ensureSampleTrip(userId: string) {
   // A trip still in proposal state — nothing priced, awaiting approval.
   const sf = buildSanFranciscoTrip(userId);
   s.trips.set(sf.id, sf);
+
+  // Best-effort Firestore mirror of seed trips (same proposal wire shape).
+  void import("@/lib/firebase/trips")
+    .then(({ syncTripToFirestore }) =>
+      Promise.allSettled([
+        syncTripToFirestore(trip, { userId }),
+        syncTripToFirestore(lisbon, { userId }),
+        syncTripToFirestore(sf, { userId }),
+      ]),
+    )
+    .catch(() => {
+      /* Firebase optional at seed time */
+    });
 }
 
 function mkItem(

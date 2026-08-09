@@ -107,9 +107,25 @@ export async function createTripFromIntake(input: CreateTripInput) {
     planError = e instanceof Error ? e.message : "Planning failed";
   }
 
+  // Sync structured proposal document to Firestore (request_id, flights, hotel…).
+  let firebase: { ok: boolean; path?: string; error?: string; skipped?: boolean } | undefined;
+  try {
+    const fresh = demoStore.getTripById(trip.id) ?? trip;
+    const { syncTripToFirestore } = await import("@/lib/firebase/trips");
+    const sync = await syncTripToFirestore(fresh, { userId });
+    firebase = sync.ok
+      ? { ok: true, path: sync.path }
+      : { ok: false, error: sync.error, skipped: sync.skipped };
+  } catch (e) {
+    firebase = {
+      ok: false,
+      error: e instanceof Error ? e.message : "Firebase sync failed",
+    };
+  }
+
   revalidatePath("/app/trips");
   revalidatePath(`/app/trips/${trip.id}`);
-  return { tripId: trip.id, planned, planError };
+  return { tripId: trip.id, planned, planError, firebase };
 }
 
 /**

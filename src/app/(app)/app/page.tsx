@@ -58,7 +58,7 @@ export default async function CommandCenter({
       tripId={active.id}
       tripTitle={active.title}
       destination={active.destination}
-      trips={trips.map((t) => ({ id: t.id, title: t.title }))}
+      trips={trips.map((t) => ({ id: t.id, title: t.title, destination: t.destination }))}
     />
   );
 }

@@ -145,7 +145,7 @@ export default function TripDetail({
           <button type="button" onClick={shareTrip} disabled={shareBusy} className="wp-cta-ghost px-4 py-2 text-sm disabled:opacity-50">
             {shareBusy ? "Sharing…" : "Share / export"}
           </button>
-          <Link href="/app" className="wp-cta px-4 py-2 text-sm">
+          <Link href={`/app?tripId=${encodeURIComponent(trip.id)}`} className="wp-cta px-4 py-2 text-sm">
             Map OS
           </Link>
           <Link href="/app/trips/new" className="wp-cta-ghost px-4 py-2 text-sm">
