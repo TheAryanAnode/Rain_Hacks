@@ -3,7 +3,7 @@ import { requireUserId } from "@/server/auth";
 import { demoStore } from "@/lib/demo/store";
 import PageAsciiHero from "@/components/app/PageAsciiHero";
 import {
-  attendeeCost,
+  projectedAttendeeCost,
   checkPolicy,
   initials,
   tierFor,
@@ -11,15 +11,49 @@ import {
   RSVP_LABEL,
   PURPOSE_LABEL,
   type Attendee,
+  type Program,
 } from "@/lib/enterprise/program";
 import type { DemoTrip } from "@/lib/demo/store";
+import { findDirectoryByEmail } from "@/lib/enterprise/directory";
 
 type Row = {
   attendee: Attendee;
   trip: DemoTrip;
   flags: ReturnType<typeof checkPolicy>;
   costUsd: number;
+  estimated: boolean;
+  profileHref: string;
 };
+
+function tripAsProgram(trip: DemoTrip): Program {
+  const c = trip.coordination!;
+  return {
+    id: trip.id,
+    name: trip.title,
+    purpose: c.purpose,
+    status: "BOOKING",
+    destination: trip.destination,
+    venue: c.agenda[0]?.location ?? trip.destination,
+    arrivalAirport: trip.arrivalAirport ?? "",
+    startDate: trip.startDate ?? new Date(),
+    endDate: trip.endDate ?? new Date(),
+    organizerName: "Aryan",
+    organizerEmail: "aryan@wayport.demo",
+    costCenter: c.costCenter ?? "",
+    budgetUsd: Number(trip.budgets[0]?.totalBudget ?? 0),
+    policyTier: c.policyTier,
+    attendees: c.travelers,
+    roomBlocks: c.roomBlocks,
+    approvals: c.approvals,
+    agenda: c.agenda,
+    createdAt: trip.createdAt,
+  };
+}
+
+function profileHrefFor(a: Attendee): string {
+  const dir = findDirectoryByEmail(a.email);
+  return `/app/travelers/${dir?.id ?? encodeURIComponent(a.email)}`;
+}
 
 const RSVP_TONE: Record<Attendee["rsvp"], string> = {
   ACCEPTED: "wp-badge-ok",
@@ -36,14 +70,20 @@ export default async function TravelersPage() {
 
   // One row per person per upcoming trip — this directory answers "who is
   // travelling", not "who is employed".
-  const rows: Row[] = trips.flatMap((trip) =>
-    trip.coordination!.travelers.map((attendee) => ({
-      attendee,
-      trip,
-      flags: checkPolicy(attendee, tierFor(attendee, trip.coordination!.policyTier)),
-      costUsd: attendeeCost(attendee).totalUsd,
-    })),
-  );
+  const rows: Row[] = trips.flatMap((trip) => {
+    const program = tripAsProgram(trip);
+    return trip.coordination!.travelers.map((attendee) => {
+      const cost = projectedAttendeeCost(attendee, program);
+      return {
+        attendee,
+        trip,
+        flags: checkPolicy(attendee, tierFor(attendee, trip.coordination!.policyTier)),
+        costUsd: cost.totalUsd,
+        estimated: cost.estimated,
+        profileHref: profileHrefFor(attendee),
+      };
+    });
+  });
 
   const departments = [...new Set(rows.map((r) => r.attendee.department))].sort();
   const travelling = rows.filter((r) => r.attendee.rsvp !== "DECLINED");
@@ -59,7 +99,7 @@ export default async function TravelersPage() {
         variant="travelers"
         eyebrow="Company"
         title="Travelers"
-        subtitle="Everyone with travel on the books — readiness, policy standing, and cost to the company."
+        subtitle="Everyone with travel on the books — click a name for their Travel DNA profile."
       />
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -123,13 +163,16 @@ export default async function TravelersPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {deptRows.map(({ attendee: a, trip, flags, costUsd }) => (
+                      {deptRows.map(({ attendee: a, trip, flags, costUsd, estimated, profileHref }) => (
                         <tr key={`${trip.id}-${a.id}`}>
                           <td>
-                            <div className="flex items-center gap-3">
+                            <Link
+                              href={profileHref}
+                              className="flex items-center gap-3 rounded-lg outline-none ring-ember/40 transition hover:bg-white/[0.03] focus-visible:ring-2"
+                            >
                               <span className="wp-avatar">{initials(a.name)}</span>
                               <div className="min-w-0">
-                                <div className="truncate font-medium text-text-primary">
+                                <div className="truncate font-medium text-text-primary hover:text-ember">
                                   {a.name}
                                 </div>
                                 <div className="truncate text-xs text-text-tertiary">
@@ -147,7 +190,7 @@ export default async function TravelersPage() {
                                   </div>
                                 )}
                               </div>
-                            </div>
+                            </Link>
                           </td>
 
                           <td className="whitespace-nowrap font-mono text-xs">
@@ -191,7 +234,18 @@ export default async function TravelersPage() {
                           </td>
 
                           <td className="wp-num whitespace-nowrap font-medium text-text-primary">
-                            {costUsd > 0 ? usd(costUsd) : "—"}
+                            {costUsd > 0 ? (
+                              <span title={estimated ? "Estimated — no live quote yet" : undefined}>
+                                {usd(costUsd)}
+                                {estimated ? (
+                                  <span className="ml-1 text-[10px] font-normal text-text-tertiary">
+                                    est.
+                                  </span>
+                                ) : null}
+                              </span>
+                            ) : (
+                              "—"
+                            )}
                           </td>
                         </tr>
                       ))}

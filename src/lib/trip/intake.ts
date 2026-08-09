@@ -17,6 +17,8 @@ export interface TripIntake {
   travelers: number;
   budgetUsd?: number;
   purpose?: string;
+  title?: string;
+  costCenter?: string;
   notes?: string;
 }
 
@@ -31,6 +33,13 @@ export const FIELD_PROMPT: Record<IntakeField, string> = {
   startDate: "What date does the trip start?",
 };
 
+/** Short examples users can append to the description box. */
+export const FIELD_HINT: Record<IntakeField, string> = {
+  origin: "from SFO",
+  destination: "to Lisbon",
+  startDate: "on March 14",
+};
+
 export interface ParsedIntake {
   origin?: string;
   destination?: string;
@@ -41,6 +50,8 @@ export interface ParsedIntake {
   travelers?: number;
   budgetUsd?: number;
   purpose?: string;
+  title?: string;
+  costCenter?: string;
   /** Required fields still unknown, in the order they should be asked. */
   missing: IntakeField[];
 }
@@ -228,41 +239,70 @@ export function parseOrigin(text: string): string | undefined {
 
 /**
  * Extracts everything it can and reports what still has to be asked.
- * `known` lets the caller fold in answers already collected.
+ *
+ * Values found in `text` win over `known` — Fill fields means apply this
+ * description. `known` only fills gaps the sentence does not mention.
  */
 export function parseIntake(
   text: string,
   known: Partial<TripIntake> = {},
   now = new Date(),
 ): ParsedIntake {
-  const origin = known.origin ?? parseOrigin(text);
-  const startDate = known.startDate ?? parseStartDate(text, now);
+  // Prefer fresh extractions values so editing the box and re-clicking updates fields.
+  let origin = parseOrigin(text) ?? known.origin;
+  let startDate = parseStartDate(text, now) ?? known.startDate;
+  let destination = parseDestination(text, origin) ?? known.destination;
 
   const durationMatch = text.toLowerCase().match(/(\d+)\s*(day|night|week)s?/);
   const durationDays = durationMatch
     ? +durationMatch[1] * (durationMatch[2] === "week" ? 7 : 1)
     : undefined;
 
-  const budgetMatch = text.match(/\$\s*([0-9][0-9,]*)\s*(k)?/i);
-  const budgetUsd =
-    known.budgetUsd ??
-    (budgetMatch
-      ? parseFloat(budgetMatch[1].replace(/,/g, "")) * (budgetMatch[2] ? 1000 : 1)
-      : undefined);
+  const budgetUsd = parseBudget(text) ?? known.budgetUsd;
 
   const peopleMatch = text.match(/\b(\d+)\s*(?:people|travelers|travellers|attendees|of us)\b/i);
-  const travelers = known.travelers ?? (peopleMatch ? +peopleMatch[1] : undefined);
+  const travelers = peopleMatch ? +peopleMatch[1] : known.travelers;
 
-  let endDate = known.endDate;
+  const purpose = parsePurpose(text) ?? known.purpose;
+  const costCenter = parseCostCenter(text) ?? known.costCenter;
+
+  let endDate = parseEndDate(text, now) ?? known.endDate;
+  if (!endDate && startDate && durationDays) {
+    const d = new Date(`${startDate}T00:00:00Z`);
+    // "for 4 days" → return on day 4 (start + 3) feels wrong for budget trips;
+    // treat duration as inclusive span ending on start + N days.
+    d.setUTCDate(d.getUTCDate() + durationDays);
+    endDate = iso(d);
+  }
+
+  // Short follow-up aimed at the next missing required field (matches the UI prompt).
+  const nextMissing = REQUIRED_FIELDS.find((f) =>
+    f === "origin" ? !origin : f === "startDate" ? !startDate : !destination,
+  );
+  const followUp = nextMissing ? lastFollowUpFragment(text) : undefined;
+  if (followUp && nextMissing === "origin" && !parseOrigin(text)) {
+    const asOrigin =
+      toAirportCode(followUp) ?? (looksLikePlace(followUp) ? titleCase(followUp) : undefined);
+    if (asOrigin) origin = asOrigin;
+  } else if (followUp && nextMissing === "destination" && !parseDestination(text, origin)) {
+    const asDest =
+      parseDestination(`to ${followUp}`) ??
+      (looksLikePlace(followUp) ? titleCase(followUp) : undefined);
+    if (asDest) destination = asDest;
+  } else if (followUp && nextMissing === "startDate" && !parseStartDate(text, now)) {
+    startDate = parseStartDate(followUp, now) ?? startDate;
+  }
+
   if (!endDate && startDate && durationDays) {
     const d = new Date(`${startDate}T00:00:00Z`);
     d.setUTCDate(d.getUTCDate() + durationDays);
     endDate = iso(d);
   }
 
-  // Pass the matched origin so it can't also be read as the destination.
-  const destination = known.destination ?? parseDestination(text, origin);
-  const purpose = known.purpose ?? parsePurpose(text);
+  const title =
+    parseExplicitTitle(text) ??
+    suggestTitle({ purpose, destination, text }) ??
+    known.title;
 
   const missing = REQUIRED_FIELDS.filter((f) =>
     f === "origin" ? !origin : f === "startDate" ? !startDate : !destination,
@@ -277,8 +317,112 @@ export function parseIntake(
     travelers,
     budgetUsd,
     purpose,
+    title,
+    costCenter,
     missing,
   };
+}
+
+/** `$32,000`, `32000`, `budget 32k`. */
+export function parseBudget(text: string): number | undefined {
+  const withSymbol = text.match(/\$\s*([0-9][0-9,]*(?:\.\d+)?)\s*(k)?/i);
+  if (withSymbol) {
+    return parseFloat(withSymbol[1].replace(/,/g, "")) * (withSymbol[2] ? 1000 : 1);
+  }
+  const labeled = text.match(
+    /\b(?:budget|spend|cap)\s*(?:of|is|:)?\s*\$?\s*([0-9][0-9,]*(?:\.\d+)?)\s*(k)?\b/i,
+  );
+  if (labeled) {
+    return parseFloat(labeled[1].replace(/,/g, "")) * (labeled[2] ? 1000 : 1);
+  }
+  return undefined;
+}
+
+/** `ENG-1042`, `cost center ENG-1042`. */
+export function parseCostCenter(text: string): string | undefined {
+  const labeled = text.match(
+    /\b(?:cost\s*center|cc|gl)\s*[:=]?\s*([A-Z]{2,8}[-\s]?\d{2,6})\b/i,
+  );
+  if (labeled) return labeled[1].replace(/\s+/g, "-").toUpperCase();
+  const bare = text.match(/\b([A-Z]{2,6}-\d{3,6})\b/);
+  if (bare) return bare[1].toUpperCase();
+  return undefined;
+}
+
+/** Explicit end phrasing: until / through / ending March 18. */
+export function parseEndDate(text: string, now = new Date()): string | undefined {
+  const m = text.match(
+    /\b(?:until|through|thru|ending|ends?(?:\s+on)?|return(?:ing)?)\s+([^,.;]+?)(?=\s+(?:from|with|budget|for|,)|[,.]|$)/i,
+  );
+  if (m) return parseStartDate(m[1], now);
+  return undefined;
+}
+
+/** `titled "…"`, `name: …`, `called …`. */
+export function parseExplicitTitle(text: string): string | undefined {
+  const m =
+    text.match(/\b(?:title|named|called|trip\s*name)\s*[:=]?\s*["“]([^"”]+)["”]/i) ??
+    text.match(/\b(?:title|named|called|trip\s*name)\s*[:=]\s*([A-Za-z0-9][^,.\n]{2,60})/i);
+  return m?.[1]?.trim();
+}
+
+const TITLE_PURPOSE: Record<string, string> = {
+  OFFSITE: "Offsite",
+  CONFERENCE: "Conference",
+  CLIENT_VISIT: "Client visit",
+  TRAINING: "Training",
+  RECRUITING: "Recruiting",
+};
+
+/** Builds a trip name from purpose + destination when the text implies one. */
+export function suggestTitle(opts: {
+  purpose?: string;
+  destination?: string;
+  text?: string;
+}): string | undefined {
+  const { purpose, destination, text = "" } = opts;
+  if (!destination) return undefined;
+
+  const dept = text.match(
+    /\b(engineering|product|design|sales|marketing|finance|ops|operations|executive|hr)\b/i,
+  );
+
+  if (purpose === "OFFSITE" || /\boff-?site\b/i.test(text)) {
+    if (dept) return `${titleCase(dept[1])} Offsite — ${destination}`;
+    return `Team offsite — ${destination}`;
+  }
+
+  const base = (purpose && TITLE_PURPOSE[purpose]) || "Trip";
+  return `${base} — ${destination}`;
+}
+
+/** Last line or trailing clause — what users usually append when prompted. */
+function lastFollowUpFragment(text: string): string | undefined {
+  const lines = text
+    .split(/\n+/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (lines.length >= 2) {
+    const last = lines[lines.length - 1]!;
+    if (last.length <= 60) return last.replace(/^[,.\-\s]+/, "").trim();
+  }
+  // Trailing after a period / em dash / semicolon
+  const trail = text.match(/(?:[.!?;—–]\s*|,\s+)([A-Za-z0-9][^.!?;]{0,50})$/);
+  if (trail) return trail[1].trim();
+  // Whole text is a short answer on its own
+  const trimmed = text.trim();
+  if (trimmed.length > 0 && trimmed.length <= 40 && !/\b(for|people|budget|\$)\b/i.test(trimmed)) {
+    return trimmed;
+  }
+  return undefined;
+}
+
+function looksLikePlace(s: string): boolean {
+  const t = s.trim();
+  if (t.length < 2 || t.length > 40) return false;
+  if (/^\d/.test(t)) return false;
+  if (/\b(day|week|night|people|budget)\b/i.test(t)) return false;
+  return /^[A-Za-z][A-Za-z\s'’.-]*$/.test(t);
 }
 
 /** The next question to ask, or null when intake is complete. */

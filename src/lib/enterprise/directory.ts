@@ -83,6 +83,11 @@ export function findDirectoryTraveler(id: string): DirectoryTraveler | undefined
   return DIRECTORY.find((d) => d.id === id);
 }
 
+export function findDirectoryByEmail(email: string): DirectoryTraveler | undefined {
+  const key = email.trim().toLowerCase();
+  return DIRECTORY.find((d) => d.email.toLowerCase() === key);
+}
+
 /** Everyone who has been added to the directory, grouped for the picker UI. */
 export function directoryByDepartment(): [string, DirectoryTraveler[]][] {
   const map = new Map<string, DirectoryTraveler[]>();

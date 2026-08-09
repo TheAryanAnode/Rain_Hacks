@@ -16,6 +16,10 @@ import type {
 } from "@/lib/enterprise/program";
 import type { TripProposal } from "@/lib/enterprise/proposal";
 import { buildLisbonTrip, buildSanFranciscoTrip } from "@/lib/enterprise/seed";
+import {
+  findDirectoryByEmail,
+  findDirectoryTraveler,
+} from "@/lib/enterprise/directory";
 
 export function isMemoryGraph(): boolean {
   return isDemoMode() || !process.env.DATABASE_URL;
@@ -144,6 +148,8 @@ type Store = {
   actions: DemoAction[];
   inbox: DemoInboxDoc[];
   profiles: Map<string, DemoProfile>;
+  /** Travel DNA keyed by directory traveler id (or email for ad-hoc). */
+  travelerDna: Map<string, Record<string, unknown>>;
   seeded: boolean;
 };
 
@@ -156,8 +162,13 @@ function store(): Store {
       actions: [],
       inbox: [],
       profiles: new Map(),
+      travelerDna: new Map(),
       seeded: false,
     };
+  }
+  // Hot-reload safety: older in-memory stores may lack travelerDna.
+  if (!g.__wayportDemoStore.travelerDna) {
+    g.__wayportDemoStore.travelerDna = new Map();
   }
   return g.__wayportDemoStore;
 }
@@ -202,6 +213,84 @@ export function updateProfile(userId: string, patch: Partial<DemoProfile>) {
   const p = getOrCreateProfile(userId);
   Object.assign(p, patch);
   return p;
+}
+
+/** Seed / fetch Travel DNA for a company directory traveler. */
+export function getTravelerDna(travelerKey: string): Record<string, unknown> {
+  const s = store();
+  let dna = s.travelerDna.get(travelerKey);
+  if (!dna) {
+    dna = seedDnaForTraveler(travelerKey);
+    s.travelerDna.set(travelerKey, dna);
+  }
+  return dna;
+}
+
+export function updateTravelerDna(
+  travelerKey: string,
+  dna: Record<string, unknown>,
+): Record<string, unknown> {
+  const s = store();
+  s.travelerDna.set(travelerKey, dna);
+  return dna;
+}
+
+function seedDnaForTraveler(travelerKey: string): Record<string, unknown> {
+  const base = defaultDna();
+  // Deterministic variation from the key so each person feels distinct.
+  let h = 0;
+  for (let i = 0; i < travelerKey.length; i++) h = (h * 31 + travelerKey.charCodeAt(i)) | 0;
+  const n = (offset: number, span = 4) => 3 + Math.abs((h >> offset) % (span + 1));
+
+  base.personality = {
+    adventure: n(0),
+    luxury: n(3),
+    spontaneity: n(6),
+    planning: n(9),
+  };
+  base.physical = {
+    walkingTolerance: n(2, 5),
+    heatTolerance: n(5),
+    jetLagSeverity: n(8),
+  };
+  base.social = {
+    nightlife: n(1),
+    crowds: n(4),
+    touristAttractions: n(7),
+  };
+  base.food = {
+    dietary: [] as string[],
+    spice: n(2),
+    fineDining: n(5),
+    streetFood: n(8),
+  };
+  base.money = {
+    budgetSensitivity: n(3),
+    hotelPriority: n(6),
+    experiencePriority: n(1, 5),
+  };
+
+  // Overlay directory facts when we recognize the traveler.
+  const dir = findDirectoryTraveler(travelerKey) ?? findDirectoryByEmail(travelerKey);
+  if (dir?.dietary?.length) {
+    (base.food as any).dietary = [...dir.dietary];
+    (base.food as any).streetFood = Math.min(10, Number((base.food as any).streetFood) + 1);
+  }
+  if (dir?.accessibility?.length) {
+    (base.physical as any).walkingTolerance = Math.min(
+      4,
+      Number((base.physical as any).walkingTolerance),
+    );
+  }
+  if (dir?.title?.toLowerCase().includes("vp") || dir?.title?.toLowerCase().includes("principal")) {
+    (base.personality as any).luxury = Math.max(7, Number((base.personality as any).luxury));
+    (base.money as any).budgetSensitivity = Math.min(
+      4,
+      Number((base.money as any).budgetSensitivity),
+    );
+  }
+
+  return base;
 }
 
 export function ensureSampleTrip(userId: string) {

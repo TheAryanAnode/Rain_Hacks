@@ -122,49 +122,29 @@ export default function CoordinationView({
         </div>
         <div className="wp-stat">
           <span className="wp-stat-label">Projected spend</span>
-          {/* Nothing priced yet reads as "not quoted", never as $0. */}
-          {cost.unpriced ? (
-            <>
-              <span className="wp-stat-value text-warn">Not quoted</span>
-              <span className="text-xs text-text-tertiary">
-                Budget {usd(cost.budgetUsd)} · awaiting live fares
-              </span>
-            </>
-          ) : (
-            <>
-              <span className="wp-stat-value">{usd(cost.projectedUsd)}</span>
-              <div className="wp-progress mt-1">
-                <div
-                  className="wp-progress-fill"
-                  data-tone={budgetTone}
-                  style={{ width: `${Math.min(100, Math.round(cost.utilization * 100))}%` }}
-                />
-              </div>
-              <span className="text-xs text-text-tertiary">of {usd(cost.budgetUsd)}</span>
-            </>
-          )}
+          <span className="wp-stat-value">{usd(cost.projectedUsd)}</span>
+          <div className="wp-progress mt-1">
+            <div
+              className="wp-progress-fill"
+              data-tone={budgetTone}
+              style={{ width: `${Math.min(100, Math.round(cost.utilization * 100))}%` }}
+            />
+          </div>
+          <span className="text-xs text-text-tertiary">
+            of {usd(cost.budgetUsd)}
+            {cost.estimated ? " · estimated until live quotes" : ""}
+          </span>
         </div>
         <div className="wp-stat">
           <span className="wp-stat-label">
-            {cost.unpriced ? "Budget compliance" : cost.varianceUsd >= 0 ? "Remaining" : "Over budget"}
+            {cost.varianceUsd >= 0 ? "Remaining" : "Over budget"}
           </span>
-          {cost.unpriced ? (
-            <>
-              <span className="wp-stat-value text-warn">Unknown</span>
-              <span className="text-xs text-text-tertiary">
-                Cannot be checked without prices
-              </span>
-            </>
-          ) : (
-            <>
-              <span className={`wp-stat-value ${cost.varianceUsd < 0 ? "text-err" : "text-ok"}`}>
-                {usd(Math.abs(cost.varianceUsd))}
-              </span>
-              <span className="text-xs text-text-tertiary">
-                {usd(cost.perAttendeeUsd)} per traveler
-              </span>
-            </>
-          )}
+          <span className={`wp-stat-value ${cost.varianceUsd < 0 ? "text-err" : "text-ok"}`}>
+            {usd(Math.abs(cost.varianceUsd))}
+          </span>
+          <span className="text-xs text-text-tertiary">
+            {usd(cost.perAttendeeUsd)} per traveler
+          </span>
         </div>
         <div className="wp-stat">
           <span className="wp-stat-label">Ground transfers</span>
@@ -407,12 +387,13 @@ export default function CoordinationView({
                     <span className="wp-badge wp-badge-neutral">{c.costCenter}</span>
                   )}
                 </div>
-                {cost.unpriced && (
+                {cost.estimated && (
                   <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-warn/25 bg-warn/8 px-4 py-3">
                     <span className="mt-1.5 wp-dot-mark text-warn" />
                     <p className="text-sm text-text-secondary">
-                      No live fares or rates have come back for this trip, so committed
-                      spend and budget compliance cannot be calculated yet.
+                      Projected from route and room estimates — live fares have not
+                      returned yet. Numbers update as quotes land; RSVP response rate
+                      does not hide spend.
                     </p>
                   </div>
                 )}
@@ -421,40 +402,28 @@ export default function CoordinationView({
                   <div className="wp-card-sunken p-4">
                     <div className="wp-stat-label">Committed</div>
                     <div className="mt-1 text-xl font-semibold tabular-nums">
-                      {cost.unpriced ? (
-                        <span className="text-base text-warn">Not quoted</span>
-                      ) : (
-                        usd(cost.committedUsd)
-                      )}
+                      {usd(cost.committedUsd)}
                     </div>
                     <div className="mt-0.5 text-xs text-text-tertiary">Ticketed and booked</div>
                   </div>
                   <div className="wp-card-sunken p-4">
                     <div className="wp-stat-label">Pipeline</div>
                     <div className="mt-1 text-xl font-semibold tabular-nums">
-                      {cost.unpriced ? (
-                        <span className="text-base text-warn">Not quoted</span>
-                      ) : (
-                        usd(cost.pipelineUsd)
-                      )}
+                      {usd(cost.pipelineUsd)}
                     </div>
-                    <div className="mt-0.5 text-xs text-text-tertiary">Priced, not booked</div>
+                    <div className="mt-0.5 text-xs text-text-tertiary">
+                      {cost.estimated ? "Estimated, not booked" : "Priced, not booked"}
+                    </div>
                   </div>
                   <div className="wp-card-sunken p-4">
                     <div className="wp-stat-label">Variance</div>
                     <div
                       className={`mt-1 text-xl font-semibold tabular-nums ${
-                        cost.unpriced ? "text-warn" : cost.varianceUsd < 0 ? "text-err" : "text-ok"
+                        cost.varianceUsd < 0 ? "text-err" : "text-ok"
                       }`}
                     >
-                      {cost.unpriced ? (
-                        <span className="text-base">Unknown</span>
-                      ) : (
-                        <>
-                          {cost.varianceUsd < 0 ? "−" : "+"}
-                          {usd(Math.abs(cost.varianceUsd))}
-                        </>
-                      )}
+                      {cost.varianceUsd < 0 ? "−" : "+"}
+                      {usd(Math.abs(cost.varianceUsd))}
                     </div>
                     <div className="mt-0.5 text-xs text-text-tertiary">
                       against {usd(cost.budgetUsd)}
